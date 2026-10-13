@@ -20,7 +20,7 @@ function validate(identifier: string, password: string): Errors {
   return errors
 }
 
-function EyeIcon({ open }: { open: boolean }) {
+export function EyeIcon({ open }: { open: boolean }) {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
@@ -30,7 +30,7 @@ function EyeIcon({ open }: { open: boolean }) {
   )
 }
 
-function ShieldLogo() {
+export function ShieldLogo() {
   return (
     <svg className="login-logo-icon" viewBox="0 0 32 36" aria-hidden="true">
       <path d="M16 1 3 6v10c0 9 5.6 15.6 13 19 7.4-3.4 13-10 13-19V6L16 1Z" fill="#fff" />

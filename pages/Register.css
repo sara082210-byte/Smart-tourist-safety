@@ -1,0 +1,40 @@
+/* Register reuses Login.css; these rules only tighten spacing for the longer form. */
+.register-card { min-height: 640px; }
+
+.register-form-wrap { padding-top: 48px; padding-bottom: 36px; }
+.register-form-wrap h1 { font-size: 2.1rem; }
+.register-form-wrap .login-sub { margin-top: 14px; }
+
+.register-form { margin-top: 28px; }
+.register-form .field { margin-bottom: 14px; }
+.register-form .field label { margin-bottom: 6px; }
+.register-form .field input { height: 44px; }
+
+.register-terms {
+  display: flex;
+  flex-direction: column;
+  margin: 6px 0 18px;
+}
+.register-terms label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.98rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.register-terms input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.register-card .login-switch { margin-top: 18px; }
+
+@media (max-width: 700px) {
+  .register-form-wrap { padding: 28px 22px 32px; }
+  .register-terms label { align-items: flex-start; }
+}

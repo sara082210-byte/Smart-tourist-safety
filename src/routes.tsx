@@ -7,11 +7,13 @@
 import type { ComponentType } from 'react'
 import Home from '../pages/Home'
 import Login from '../pages/Login'
+import Register from '../pages/Register'
 
 export const routes: Record<string, ComponentType> = {
   // --- Home / Login / Dashboard (owner: me) ---
   '/': Home,
   '/login': Login,
+  '/register': Register,
 
   // --- SOS / Journey / Contacts / Assistant (owner: friend) ---
 }
