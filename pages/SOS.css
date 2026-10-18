@@ -1,0 +1,727 @@
+/* ==========================================================================
+   EMERGENCY SOS PAGE (Matches reference image pixel-for-pixel)
+   ========================================================================== */
+
+.sos-page-wrapper {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #dce7f5 0%, #e6effa 100%);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #0f172a;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.sos-ambient-backdrop {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px 40px;
+}
+
+/* ===== Mock App Bar behind the modal ===== */
+.sos-app-bar-mock {
+  max-width: 1100px;
+  width: 100%;
+  margin: 16px auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  opacity: 0.65;
+}
+
+.sos-mock-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sos-shield-icon {
+  width: 26px;
+  height: 28px;
+}
+
+.sos-brand-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0b3a7a;
+  letter-spacing: -0.01em;
+}
+
+.sos-mock-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sos-user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sos-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sos-avatar-fallback {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.sos-user-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* ===== Toast Alert ===== */
+.sos-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px 18px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  z-index: 1200;
+  font-size: 13.5px;
+  font-weight: 500;
+  animation: toastSlide 0.25s ease-out;
+}
+
+.sos-toast-icon {
+  font-size: 16px;
+}
+
+.sos-toast-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+  margin-left: 6px;
+}
+
+.sos-toast-close:hover {
+  color: #ffffff;
+}
+
+@keyframes toastSlide {
+  from {
+    transform: translateY(-15px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ===== Active Alert Banner (When SOS is active) ===== */
+.sos-active-alert-banner {
+  max-width: 720px;
+  width: 100%;
+  margin: 16px auto 0;
+  background: #fef2f2;
+  border: 1.5px solid #dc2626;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.15);
+  animation: bannerFadeIn 0.3s ease-out;
+}
+
+.sos-alert-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sos-alert-icon-ring {
+  font-size: 26px;
+  animation: sirenPulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes sirenPulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.15); }
+}
+
+.sos-alert-headline {
+  font-size: 15px;
+  font-weight: 700;
+  color: #b91c1c;
+  margin-bottom: 2px;
+}
+
+.sos-alert-subline {
+  font-size: 12.5px;
+  color: #334155;
+}
+
+.sos-alert-disclaimer {
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.sos-alert-dismiss-btn {
+  background: #ffffff;
+  color: #dc2626;
+  border: 1.5px solid #dc2626;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.sos-alert-dismiss-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+@keyframes bannerFadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Card Container & Outer Layout ===== */
+.sos-card-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 30px;
+  padding: 0 10px;
+}
+
+.sos-modal-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 15px 40px rgba(15, 23, 42, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
+  width: 100%;
+  max-width: 680px;
+  padding: 24px 28px 24px;
+  position: relative;
+}
+
+/* ===== Header ===== */
+.sos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.sos-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.sos-subtitle {
+  font-size: 13.5px;
+  color: #64748b;
+  margin-top: 3px;
+  font-weight: 400;
+}
+
+.sos-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.sos-close-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+/* ===== 5 Emergency Type Cards Grid ===== */
+.sos-options-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin: 22px 0 20px;
+}
+
+.sos-option-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 6px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+  font-family: inherit;
+}
+
+.sos-option-card:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+}
+
+/* Individual Selection Borders matching the reference */
+.sos-option-card.selected-medical {
+  border-color: #dc2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15);
+}
+
+.sos-option-card.selected-harassment {
+  border-color: #9333ea;
+  box-shadow: 0 4px 12px rgba(147, 51, 234, 0.15);
+}
+
+.sos-option-card.selected-lost {
+  border-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+}
+
+.sos-option-card.selected-accident {
+  border-color: #0284c7;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.15);
+}
+
+.sos-option-card.selected-other {
+  border-color: #64748b;
+  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.15);
+}
+
+.sos-icon-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.bg-red-soft { background-color: #fee2e2; }
+.bg-purple-soft { background-color: #f3e8ff; }
+.bg-amber-soft { background-color: #fef3c7; }
+.bg-blue-soft { background-color: #e0f2fe; }
+.bg-grey-soft { background-color: #f1f5f9; }
+
+.sos-medical-square {
+  width: 22px;
+  height: 22px;
+  background-color: #dc2626;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.sos-medical-square svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sos-svg-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.icon-purple { color: #9333ea; }
+.icon-amber { color: #d97706; }
+.icon-blue { color: #0284c7; }
+.icon-grey { color: #64748b; }
+
+.sos-option-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* ===== Lower Grid: Location & Mini Map ===== */
+.sos-lower-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+/* Left Location Box */
+.sos-location-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.sos-location-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sos-location-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.sos-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #0284c7;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.sos-gps-fixed {
+  font-size: 11px;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.sos-location-body {
+  margin: 6px 0 8px;
+}
+
+.sos-location-text {
+  font-size: 13.5px;
+  color: #475569;
+  font-weight: 500;
+}
+
+.sos-location-coords {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.sos-responders-badge {
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sos-responders-icon {
+  font-size: 16px;
+}
+
+.sos-responders-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #1e40af;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sos-responders-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+/* Right Map Box */
+.sos-map-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 140px;
+  position: relative;
+  background-color: #e8f5e9;
+}
+
+.sos-map-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ===== Footer Actions ===== */
+.sos-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sos-btn-cancel {
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.sos-btn-cancel:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.sos-btn-send {
+  background: #e60000;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 34px;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(230, 0, 0, 0.28);
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.sos-btn-send:hover {
+  background: #cc0000;
+  box-shadow: 0 6px 16px rgba(204, 0, 0, 0.35);
+}
+
+.sos-btn-send:active {
+  transform: translateY(1px);
+}
+
+/* ===== Reference Caption (bottom of design mockup) ===== */
+.sos-reference-caption {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  text-align: center;
+  margin-top: 24px;
+  letter-spacing: -0.01em;
+}
+
+/* ===== Confirmation Dialog Overlay ===== */
+.sos-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1300;
+  padding: 16px;
+}
+
+.sos-confirm-dialog {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+  animation: dialogScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dialogScale {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.sos-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sos-confirm-siren {
+  font-size: 26px;
+}
+
+.sos-confirm-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.sos-confirm-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.sos-confirm-body {
+  font-size: 13.5px;
+  color: #334155;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.sos-confirm-question {
+  margin-bottom: 12px;
+}
+
+.sos-confirm-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sos-confirm-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.sos-row-label {
+  color: #64748b;
+}
+
+.sos-row-value {
+  color: #0f172a;
+  text-align: right;
+}
+
+.sos-bold {
+  font-weight: 700;
+  color: #1e40af;
+}
+
+.sos-confirm-notice {
+  font-size: 11px;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  padding: 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.sos-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.sos-btn-dialog-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sos-btn-dialog-confirm {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 22px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sos-btn-dialog-confirm:hover {
+  background: #b91c1c;
+}
+
+/* ==========================================================================
+   RESPONSIVENESS (Mobile & Tablets)
+   ========================================================================== */
+
+@media (max-width: 680px) {
+  .sos-modal-card {
+    padding: 20px 16px;
+  }
+
+  .sos-options-grid {
+    grid-template-columns: repeat(5, minmax(60px, 1fr));
+    gap: 6px;
+  }
+
+  .sos-option-card {
+    padding: 12px 2px 10px;
+  }
+
+  .sos-icon-circle {
+    width: 36px;
+    height: 36px;
+    margin-bottom: 6px;
+  }
+
+  .sos-option-label {
+    font-size: 11.5px;
+  }
+
+  .sos-lower-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .sos-active-alert-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .sos-options-grid {
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+}

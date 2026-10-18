@@ -8,3 +8,13 @@
 .app-main {
   flex: 1;
 }
+
+.app-shell--dashboard {
+  background: #f0f4f9;
+}
+
+.app-main--dashboard {
+  display: flex;
+  padding: 0;
+  width: 100%;
+}

@@ -6,11 +6,12 @@ import { routes } from './routes'
 function App() {
   const path = usePath()
   const Page = routes[path] ?? routes['/']
+  const isDashboard = path === '/dashboard'
 
   return (
-    <div className="app-shell">
-      <Navbar currentPath={path} />
-      <main className="app-main">
+    <div className={`app-shell ${isDashboard ? 'app-shell--dashboard' : ''}`}>
+      {!isDashboard && <Navbar currentPath={path} />}
+      <main className={`app-main ${isDashboard ? 'app-main--dashboard' : ''}`}>
         <Page />
       </main>
     </div>
