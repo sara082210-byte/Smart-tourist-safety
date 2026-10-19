@@ -13,6 +13,7 @@ import Journey from '../pages/Journey'
 import SOS from '../pages/SOS'
 import About from '../pages/About'
 import HowItWorks from '../pages/HowItWorks'
+import Geofencing from '../pages/Geofencing'
 
 export const routes: Record<string, ComponentType> = {
   // --- Home / Login / Dashboard (owner: me) ---
@@ -22,6 +23,7 @@ export const routes: Record<string, ComponentType> = {
   '/dashboard': Dashboard,
   '/about': About,
   '/how-it-works': HowItWorks,
+  '/geofencing': Geofencing,
 
   // --- SOS / Journey / Contacts / Assistant (owner: friend) ---
   '/journey': Journey,

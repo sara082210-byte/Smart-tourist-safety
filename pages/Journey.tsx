@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, navigate } from '../src/router'
+import { Destination, fetchDestinations } from '../src/services/destinations'
 import './Journey.css'
 
 interface UpcomingItem {
@@ -17,6 +18,14 @@ export default function Journey() {
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [checkInInterval, setCheckInInterval] = useState('Every 2 hours')
   const [notifyContacts, setNotifyContacts] = useState(true)
+
+  // Backend Destinations State
+  const [destinations, setDestinations] = useState<Destination[]>([])
+  const [destinationsLoading, setDestinationsLoading] = useState(true)
+  const [destinationsError, setDestinationsError] = useState<string | null>(null)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [selectedDestinationObj, setSelectedDestinationObj] = useState<Destination | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Current Journey State
   const [journeyInfo, setJourneyInfo] = useState({
@@ -102,6 +111,85 @@ export default function Journey() {
     setTimeout(() => setIsCheckInSuccess(false), 2000)
   }
 
+  // Fetch destinations from backend on mount
+  const loadDestinations = async () => {
+    setDestinationsLoading(true)
+    setDestinationsError(null)
+    try {
+      const data = await fetchDestinations()
+      setDestinations(data)
+
+      if (data && data.length > 0) {
+        // If current destination matches a fetched destination, populate its description & photo
+        const matched =
+          data.find((d) =>
+            destination.toLowerCase().includes(d.name.toLowerCase()) ||
+            d.name.toLowerCase().includes('goa')
+          ) || data[0]
+
+        if (matched && destination === 'Goa, India') {
+          const formatted = `${matched.name}${matched.state ? ', ' + matched.state : ''}`
+          setDestination(formatted)
+          setSelectedDestinationObj(matched)
+          setJourneyInfo((prev) => ({
+            ...prev,
+            name: formatted,
+            description: matched.description || prev.description,
+            image: matched.imageUrl || prev.image,
+          }))
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not reach backend API'
+      setDestinationsError(msg)
+    } finally {
+      setDestinationsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDestinations()
+  }, [])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  // Filtered destinations based on user input
+  const filteredDestinations = destinations.filter((d) => {
+    const q = destination.toLowerCase().trim()
+    if (!q) return true
+    return (
+      d.name.toLowerCase().includes(q) ||
+      (d.state && d.state.toLowerCase().includes(q)) ||
+      (d.description && d.description.toLowerCase().includes(q))
+    )
+  })
+
+  // Select destination from dropdown
+  const handleSelectDestination = (dest: Destination) => {
+    const label = `${dest.name}${dest.state ? ', ' + dest.state : ''}`
+    setDestination(label)
+    setSelectedDestinationObj(dest)
+    setIsDropdownOpen(false)
+
+    setJourneyInfo((prev) => ({
+      ...prev,
+      name: label,
+      description: dest.description || prev.description,
+      image: dest.imageUrl || prev.image,
+    }))
+  }
+
   // Handle Start Journey Submit
   const handleStartJourney = (e: React.FormEvent) => {
     e.preventDefault()
@@ -114,17 +202,27 @@ export default function Journey() {
     const startFormatted = startObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     const arrivalFormatted = endObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
+    const matched =
+      selectedDestinationObj ||
+      destinations.find(
+        (d) =>
+          d.name.toLowerCase() === destination.toLowerCase() ||
+          `${d.name}, ${d.state}`.toLowerCase() === destination.toLowerCase() ||
+          destination.toLowerCase().includes(d.name.toLowerCase())
+      )
+
     setJourneyInfo({
       name: destination || 'Goa, India',
       description:
-        destination.toLowerCase().includes('goa')
+        matched?.description ||
+        (destination.toLowerCase().includes('goa')
           ? 'A beautiful coastal destination known for its beaches, culture and heritage.'
-          : `Active travel itinerary to ${destination} with automated safety check-in schedule.`,
+          : `Active travel itinerary to ${destination} with automated safety check-in schedule.`),
       startDateDisplay: startFormatted,
       arrivalDisplay: arrivalFormatted,
       arrivalTimeDisplay: '12:00 PM',
       stayDuration: `${diffDays} days`,
-      image: '/images/goa-beach.jpg',
+      image: matched?.imageUrl || '/images/goa-beach.jpg',
     })
 
     showToast(`Journey to ${destination} initialized! Safe tracking and check-in timeline created.`)
@@ -235,10 +333,21 @@ export default function Journey() {
 
               <form onSubmit={handleStartJourney} className="journey-form">
                 {/* Destination */}
-                <div className="journey-form-group">
-                  <label htmlFor="journey-destination" className="journey-label">
-                    Destination <span className="journey-required">*</span>
-                  </label>
+                <div className="journey-form-group journey-destination-group" ref={dropdownRef}>
+                  <div className="journey-label-row">
+                    <label htmlFor="journey-destination" className="journey-label">
+                      Destination <span className="journey-required">*</span>
+                    </label>
+                    {destinationsLoading ? (
+                      <span className="journey-dest-loading-badge" title="Connecting to backend">
+                        <span className="journey-spinner-dot" /> Loading destinations...
+                      </span>
+                    ) : destinations.length > 0 ? (
+                      <span className="journey-dest-connected-badge" title="Live destinations connected">
+                        ● {destinations.length} available
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="journey-input-with-icon">
                     <span className="journey-field-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -251,14 +360,104 @@ export default function Journey() {
                       type="text"
                       className="journey-input"
                       value={destination}
-                      onChange={(e) => setDestination(e.target.value)}
-                      placeholder="e.g. Goa, India"
+                      onChange={(e) => {
+                        setDestination(e.target.value)
+                        setIsDropdownOpen(true)
+                      }}
+                      onFocus={() => setIsDropdownOpen(true)}
+                      placeholder={destinationsLoading ? 'Loading destinations...' : 'Search or select destination (e.g. Goa)'}
                       required
+                      autoComplete="off"
                     />
-                    <span className="journey-dropdown-arrow" aria-hidden="true">
-                      ▼
-                    </span>
+                    <button
+                      type="button"
+                      className="journey-dropdown-arrow-btn"
+                      onClick={() => setIsDropdownOpen((prev) => !prev)}
+                      aria-label="Toggle destinations dropdown"
+                      aria-expanded={isDropdownOpen}
+                    >
+                      <span className="journey-dropdown-arrow" aria-hidden="true">
+                        {isDropdownOpen ? '▲' : '▼'}
+                      </span>
+                    </button>
                   </div>
+
+                  {/* Error State */}
+                  {destinationsError && (
+                    <div className="journey-dest-error" role="alert">
+                      <span className="journey-dest-error-icon">⚠️</span>
+                      <span className="journey-dest-error-text">
+                        Backend API unavailable ({destinationsError}). Using manual entry.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={loadDestinations}
+                        className="journey-dest-retry-btn"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Dropdown Menu */}
+                  {isDropdownOpen && !destinationsLoading && (
+                    <div className="journey-dest-dropdown" role="listbox">
+                      {destinations.length > 0 ? (
+                        <>
+                          <div className="journey-dest-dropdown-header">
+                            Available Destinations ({filteredDestinations.length})
+                          </div>
+                          {filteredDestinations.length > 0 ? (
+                            <div className="journey-dest-dropdown-list">
+                              {filteredDestinations.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  className={`journey-dest-item ${
+                                    destination.toLowerCase().includes(item.name.toLowerCase()) ? 'selected' : ''
+                                  }`}
+                                  onClick={() => handleSelectDestination(item)}
+                                >
+                                  {item.imageUrl && (
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={item.name}
+                                      className="journey-dest-item-img"
+                                      onError={(e) => {
+                                        ;(e.target as HTMLElement).style.display = 'none'
+                                      }}
+                                    />
+                                  )}
+                                  <div className="journey-dest-item-info">
+                                    <div className="journey-dest-item-name">
+                                      {item.name}
+                                      {item.state && <span className="journey-dest-item-state"> • {item.state}</span>}
+                                    </div>
+                                    {item.description && (
+                                      <div className="journey-dest-item-desc">{item.description}</div>
+                                    )}
+                                    {item.latitude != null && item.longitude != null && (
+                                      <div className="journey-dest-item-coords">
+                                        📍 {item.latitude.toFixed(3)}°N, {item.longitude.toFixed(3)}°E
+                                      </div>
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="journey-dest-empty">
+                              No destinations matching "{destination}". You can continue with manual entry.
+                            </div>
+                          )}
+                        </>
+                      ) : !destinationsError ? (
+                        <div className="journey-dest-empty">
+                          No destinations registered in the backend yet. You can type any custom destination above.
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 {/* Dates Row */}
