@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# SafeJourney Spring Boot backend
+backend/target/
+
+# Local environment secrets
+.env
+.env.*
+!.env.example
+
+# Local database credentials
+backend/src/main/resources/application-local.properties
