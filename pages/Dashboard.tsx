@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, navigate } from '../src/router'
+import { getCurrentUser, logout } from '../src/services/authService'
 import './Dashboard.css'
 import './SOS.css'
 
@@ -127,6 +128,21 @@ const INITIAL_ALERTS: AlertItem[] = [
 ]
 
 export default function Dashboard() {
+  // Auth guard: only authenticated sessions may view the dashboard
+  useEffect(() => {
+    let cancelled = false
+    getCurrentUser()
+      .then((user) => {
+        if (!cancelled && !user) navigate('/login')
+      })
+      .catch(() => {
+        if (!cancelled) navigate('/login')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Navigation & UI state
   const [activeTab, setActiveTab] = useState<NavItemId>('dashboard')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -261,8 +277,13 @@ export default function Dashboard() {
     }
   }
 
-  // Handle Logout
-  const handleLogout = () => {
+  // Handle Logout: end the server session, then return to login
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      /* even if the request fails, leave the dashboard */
+    }
     navigate('/login')
   }
 

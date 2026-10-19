@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from '../src/router'
+import { Link, navigate } from '../src/router'
+import { AuthError, register } from '../src/services/authService'
 import { EyeIcon, ShieldLogo } from './Login'
 import './Login.css' // shared card / field / button styles
 import './Register.css'
@@ -48,21 +49,42 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [notice, setNotice] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const update = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }))
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (loading) return
     const found = validate(form)
     setErrors(found)
     setNotice('')
     if (Object.keys(found).length > 0) return
 
-    // No backend yet: no account is created and passwords are not stored anywhere.
-    // TODO: POST the details to the registration API over HTTPS when it exists.
-    setForm((prev) => ({ ...prev, password: '', confirm: '' }))
-    setNotice('Details look good. Account creation will work once the backend is connected.')
+    setLoading(true)
+    try {
+      await register({
+        fullName: form.fullName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        password: form.password,
+      })
+      setForm(emptyForm)
+      setNotice('Account created successfully! Redirecting to login…')
+      setTimeout(() => navigate('/login'), 1500)
+    } catch (err) {
+      setForm((prev) => ({ ...prev, password: '', confirm: '' }))
+      if (err instanceof AuthError) {
+        const fe = err.fieldErrors
+        setErrors({ fullName: fe.fullName, email: fe.email, phone: fe.phone, password: fe.password })
+        setNotice(err.message)
+      } else {
+        setNotice('Something went wrong. Please try again.')
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Small helper so every text field looks and behaves the same
@@ -159,8 +181,14 @@ export default function Register() {
               {errors.agree && <span className="field-error">{errors.agree}</span>}
             </div>
 
-            <button type="submit" className="btn btn-primary login-submit" id="reg-submit">
-              Register
+            <button
+              type="submit"
+              className="btn btn-primary login-submit"
+              id="reg-submit"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? 'Creating account…' : 'Register'}
             </button>
 
             {notice && <p className="login-notice" role="status">{notice}</p>}

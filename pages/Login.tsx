@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from '../src/router'
+import { Link, navigate } from '../src/router'
+import { AuthError, login } from '../src/services/authService'
 import './Login.css'
 
 type Errors = { identifier?: string; password?: string }
@@ -47,18 +48,33 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState<Errors>({})
   const [notice, setNotice] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (loading) return
     const found = validate(identifier, password)
     setErrors(found)
     setNotice('')
     if (Object.keys(found).length > 0) return
 
-    // No backend yet: we do NOT authenticate or store the password anywhere.
-    // TODO: send credentials to the auth API over HTTPS when it exists.
-    setPassword('')
-    setNotice('Form is valid. Login will work once the authentication backend is connected.')
+    setLoading(true)
+    try {
+      await login({ identifier: identifier.trim(), password })
+      setPassword('')
+      setNotice('Login successful. Redirecting to your dashboard…')
+      navigate('/dashboard')
+    } catch (err) {
+      setPassword('')
+      if (err instanceof AuthError) {
+        setErrors({ identifier: err.fieldErrors.identifier, password: err.fieldErrors.password })
+        setNotice(err.message)
+      } else {
+        setNotice('Something went wrong. Please try again.')
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleForgot = () => {
@@ -135,8 +151,14 @@ export default function Login() {
               </button>
             </div>
 
-            <button type="submit" className="btn btn-primary login-submit" id="login-submit">
-              Login
+            <button
+              type="submit"
+              className="btn btn-primary login-submit"
+              id="login-submit"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? 'Logging in…' : 'Login'}
             </button>
 
             {notice && <p className="login-notice" role="status">{notice}</p>}
