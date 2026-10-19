@@ -1924,3 +1924,30 @@
     text-align: center;
   }
 }
+
+/* ===== Geofencing Safety card (added) ===== */
+.summary-icon-geofence {
+  background-color: #dbeafe; /* Light blue */
+}
+
+.dash-summary-card--clickable {
+  cursor: pointer;
+}
+
+.dash-summary-card--clickable:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (min-width: 1281px) {
+  .dash-grid-bottom {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1280px) {
+  .dash-grid-bottom {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+

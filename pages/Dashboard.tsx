@@ -827,6 +827,45 @@ export default function Dashboard() {
               Manage
             </button>
           </div>
+
+          {/* Summary Card 4: Geofencing Safety */}
+          <div
+            className="dash-card dash-summary-card dash-summary-card--clickable"
+            id="card-geofencing"
+            role="link"
+            tabIndex={0}
+            onClick={() => navigate('/geofencing')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                navigate('/geofencing')
+              }
+            }}
+          >
+            <div className="summary-card-header">
+              <div className="summary-icon-circle summary-icon-geofence">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="#2563eb">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" />
+                </svg>
+              </div>
+              <div className="summary-title-group">
+                <h3 className="summary-title">Geofencing Safety</h3>
+                <p className="summary-subtitle">View safety zones and check nearby risk alerts.</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn-dash-outline"
+              onClick={(e) => {
+                e.stopPropagation()
+                navigate('/geofencing')
+              }}
+              id="dash-view-geofencing-btn"
+            >
+              View Geofencing
+            </button>
+          </div>
         </div>
       </main>
 
