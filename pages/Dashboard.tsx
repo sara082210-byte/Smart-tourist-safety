@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, navigate } from '../src/router'
 import { getCurrentUser, logout } from '../src/services/authService'
+import type { User } from '../src/services/authService'
 import './Dashboard.css'
 import './SOS.css'
 
@@ -128,12 +129,21 @@ const INITIAL_ALERTS: AlertItem[] = [
 ]
 
 export default function Dashboard() {
+  const [user, setUser] = useState<User | null>(null)
+  const [userLoading, setUserLoading] = useState(true)
+
   // Auth guard: only authenticated sessions may view the dashboard
   useEffect(() => {
     let cancelled = false
     getCurrentUser()
-      .then((user) => {
-        if (!cancelled && !user) navigate('/login')
+      .then((currentUser) => {
+        if (cancelled) return
+        if (!currentUser) {
+          navigate('/login')
+          return
+        }
+        setUser(currentUser)
+        setUserLoading(false)
       })
       .catch(() => {
         if (!cancelled) navigate('/login')
@@ -142,6 +152,17 @@ export default function Dashboard() {
       cancelled = true
     }
   }, [])
+
+  const userInitials = user?.fullName
+    ? user.fullName
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : 'U'
 
   // Navigation & UI state
   const [activeTab, setActiveTab] = useState<NavItemId>('dashboard')
@@ -318,8 +339,13 @@ export default function Dashboard() {
         </div>
 
         <div className="dash-mobile-user">
-          <div className="user-avatar-circle" title="Alex">
-            <span className="avatar-initials">A</span>
+          <div
+            className="user-avatar-circle"
+            title={user?.fullName || 'User Profile'}
+            onClick={() => setActiveModal('profile')}
+            style={{ cursor: 'pointer' }}
+          >
+            <span className="avatar-initials">{userInitials}</span>
           </div>
         </div>
       </div>
@@ -486,11 +512,36 @@ export default function Dashboard() {
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
             </svg>
-            <span className="dash-nav-label">Profile</span>
+            <span className="dash-nav-label">My Profile</span>
           </button>
         </nav>
 
         <div className="dash-sidebar-bottom">
+          <div
+            className="dash-sidebar-user-preview"
+            onClick={() => setActiveModal('profile')}
+            role="button"
+            tabIndex={0}
+            title="View My Profile"
+            style={{ cursor: 'pointer' }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setActiveModal('profile')
+              }
+            }}
+          >
+            <div className="user-avatar-circle dash-sidebar-avatar">
+              <span className="avatar-initials">{userInitials}</span>
+            </div>
+            <div className="dash-sidebar-user-info">
+              <span className="dash-sidebar-user-name">
+                {userLoading ? 'Loading…' : user?.fullName || 'User'}
+              </span>
+              <span className="dash-sidebar-user-role">Tourist</span>
+            </div>
+          </div>
+
           {/* Logout button */}
           <button
             type="button"
@@ -593,19 +644,14 @@ export default function Dashboard() {
                 id="dash-profile-menu-button"
               >
                 <div className="user-avatar-image-frame">
-                  {/* Clean rendered portrait avatar representing Alex */}
-                  <svg className="user-avatar-svg" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-                    <circle cx="18" cy="18" r="18" fill="#e2e8f0" />
-                    <circle cx="18" cy="13" r="6" fill="#1e293b" />
-                    <path d="M8 32c0-5.5 4.5-9 10-9s10 3.5 10 9" fill="#0369a1" />
-                    <path d="M14 13c0 2.2 1.8 4 4 4s4-1.8 4-4" stroke="#d97706" strokeWidth="1.2" />
-                    <circle cx="18" cy="13" r="5" fill="#fcd34d" />
-                    <path d="M15 11c0-2 1.5-3.5 3-3.5s3 1.5 3 3.5c0 .3-.1.6-.2.8-.5-.8-1.5-1.3-2.8-1.3s-2.3.5-2.8 1.3c-.1-.2-.2-.5-.2-.8Z" fill="#78350f" />
-                    <path d="M16 15c.5.5 1.2.8 2 .8s1.5-.3 2-.8" stroke="#78350f" strokeWidth="0.8" strokeLinecap="round" />
-                  </svg>
+                  <div className="user-avatar-circle" style={{ width: '100%', height: '100%' }}>
+                    <span className="avatar-initials">{userInitials}</span>
+                  </div>
                 </div>
                 <div className="user-profile-text">
-                  <span className="user-name">Alex</span>
+                  <span className="user-name">
+                    {userLoading ? 'Loading…' : user?.fullName || 'User'}
+                  </span>
                   <span className="user-role">Tourist</span>
                 </div>
                 <svg className="dash-chevron-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -617,9 +663,9 @@ export default function Dashboard() {
               {isProfileMenuOpen && (
                 <div className="dash-dropdown-panel dash-profile-dropdown" id="dash-profile-dropdown">
                   <div className="profile-dropdown-user-info">
-                    <p className="profile-dd-name">Alex Morrison</p>
-                    <p className="profile-dd-id">Passport / ID: #ID-9824-GBR</p>
-                    <span className="profile-verified-badge">✓ Verified Traveler</span>
+                    <p className="profile-dd-name">{userLoading ? 'Loading…' : user?.fullName || 'User'}</p>
+                    <p className="profile-dd-email">{user?.email || ''}</p>
+                    <span className="profile-verified-badge">✓ Verified Tourist</span>
                   </div>
                   <div className="profile-dropdown-divider" />
                   <button
@@ -629,8 +675,9 @@ export default function Dashboard() {
                       setIsProfileMenuOpen(false)
                       setActiveModal('profile')
                     }}
+                    id="dash-menu-my-profile"
                   >
-                    👤 Safety Profile & Info
+                    👤 My Profile
                   </button>
                   <button
                     type="button"
@@ -657,6 +704,7 @@ export default function Dashboard() {
                     type="button"
                     className="profile-dropdown-item profile-logout-link"
                     onClick={handleLogout}
+                    id="dash-menu-logout"
                   >
                     🚪 Log Out
                   </button>
@@ -669,7 +717,7 @@ export default function Dashboard() {
         {/* Greeting Banner */}
         <section className="dash-greeting-section" aria-labelledby="dash-greeting-title">
           <h1 id="dash-greeting-title" className="dash-greeting-title">
-            Good morning, Alex!
+            {userLoading ? 'Welcome!' : user?.fullName ? `Welcome, ${user.fullName}!` : 'Welcome!'}
           </h1>
           <p className="dash-greeting-subtitle">Stay safe. Explore more.</p>
         </section>
@@ -1597,55 +1645,61 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 8. PROFILE MODAL */}
+      {/* 8. MY PROFILE MODAL */}
       {activeModal === 'profile' && (
         <div className="dash-modal-backdrop" onClick={() => setActiveModal(null)}>
-          <div className="dash-modal" onClick={(e) => e.stopPropagation()} role="dialog">
+          <div
+            className="dash-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="dash-profile-modal-title"
+          >
             <div className="modal-header">
               <div>
-                <h3 className="modal-title">Tourist Profile & Medical Safety</h3>
-                <p className="modal-subtitle">Personal safety parameters for responder identification</p>
+                <h3 id="dash-profile-modal-title" className="modal-title">My Profile</h3>
+                <p className="modal-subtitle">Basic account information</p>
               </div>
-              <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setActiveModal(null)}
+                aria-label="Close"
+                id="dash-profile-close-btn"
+              >
                 ✕
               </button>
             </div>
 
             <div className="modal-body">
-              <div className="profile-details-sheet">
-                <div className="pds-row">
-                  <span className="pds-label">Full Name:</span>
-                  <span className="pds-value">Alex Morrison</span>
+              {userLoading ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                  Loading profile information…
                 </div>
-                <div className="pds-row">
-                  <span className="pds-label">Account Role:</span>
-                  <span className="pds-value">Verified International Tourist</span>
+              ) : (
+                <div className="profile-details-sheet">
+                  <div className="pds-row">
+                    <span className="pds-label">Full Name</span>
+                    <span className="pds-value">{user?.fullName?.trim() || 'Not provided'}</span>
+                  </div>
+                  <div className="pds-row">
+                    <span className="pds-label">Email Address</span>
+                    <span className="pds-value">{user?.email?.trim() || 'Not provided'}</span>
+                  </div>
+                  <div className="pds-row">
+                    <span className="pds-label">Phone Number</span>
+                    <span className="pds-value">{user?.phone?.trim() || 'Not provided'}</span>
+                  </div>
                 </div>
-                <div className="pds-row">
-                  <span className="pds-label">Passport / ID:</span>
-                  <span className="pds-value">GBR #98240182</span>
-                </div>
-                <div className="pds-row">
-                  <span className="pds-label">Blood Type:</span>
-                  <span className="pds-value">O Positive (O+)</span>
-                </div>
-                <div className="pds-row">
-                  <span className="pds-label">Known Allergies:</span>
-                  <span className="pds-value">Penicillin (Severe)</span>
-                </div>
-                <div className="pds-row">
-                  <span className="pds-label">Travel Insurance:</span>
-                  <span className="pds-value">Allianz Global Travel Safety #ALZ-99381</span>
-                </div>
-                <div className="pds-row">
-                  <span className="pds-label">Primary Destination:</span>
-                  <span className="pds-value">Bali, Indonesia (Grand Hyatt Nusa Dua)</span>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="modal-footer">
-              <button type="button" className="btn-dash-outline" onClick={() => setActiveModal(null)}>
+              <button
+                type="button"
+                className="btn-dash-outline"
+                onClick={() => setActiveModal(null)}
+                id="dash-profile-modal-close"
+              >
                 Close
               </button>
             </div>

@@ -150,11 +150,54 @@
   color: #ffffff;
 }
 
-/* Bottom Logout button */
+/* Bottom User Preview & Logout */
 .dash-sidebar-bottom {
   margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dash-sidebar-user-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  transition: background 0.18s ease;
+}
+
+.dash-sidebar-user-preview:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dash-sidebar-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.dash-sidebar-user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dash-sidebar-user-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-sidebar-user-role {
+  font-size: 0.75rem;
+  color: #94a3b8;
 }
 
 .dash-logout-btn {
@@ -480,10 +523,12 @@
   color: #0f172a;
 }
 
-.profile-dd-id {
+.profile-dd-id,
+.profile-dd-email {
   font-size: 0.8rem;
   color: #64748b;
   margin-top: 2px;
+  word-break: break-all;
 }
 
 .profile-verified-badge {
@@ -1795,25 +1840,35 @@
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .pds-row {
   display: flex;
   justify-content: space-between;
-  padding-bottom: 8px;
+  align-items: center;
+  padding-bottom: 10px;
   border-bottom: 1px solid #f1f5f9;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
+  gap: 16px;
+}
+
+.pds-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .pds-label {
   color: #64748b;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
 .pds-value {
   color: #0f172a;
-  font-weight: 700;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
 }
 
 /* ========================================================= */

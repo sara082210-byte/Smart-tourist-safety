@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, navigate } from '../src/router'
+import { getCurrentUser } from '../src/services/authService'
+import type { User } from '../src/services/authService'
 import './SOS.css'
 
 type EmergencyType = 'medical' | 'harassment' | 'lost' | 'accident' | 'other'
@@ -51,6 +53,7 @@ const emergencyOptions: EmergencyOption[] = [
 ]
 
 export default function SOS() {
+  const [user, setUser] = useState<User | null>(null)
   const [selectedType, setSelectedType] = useState<EmergencyType>('medical')
   const [isFetchingLocation, setIsFetchingLocation] = useState(true)
   const [locationText, setLocationText] = useState('Fetching location...')
@@ -62,6 +65,20 @@ export default function SOS() {
     responders: string
   } | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getCurrentUser()
+      .then((u) => {
+        if (!cancelled && u) setUser(u)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const userInitial = user?.fullName ? user.fullName.trim()[0].toUpperCase() : 'T'
 
   // Simulate or retrieve location on mount
   useEffect(() => {
@@ -208,16 +225,9 @@ export default function SOS() {
           </div>
           <div className="sos-mock-user">
             <div className="sos-user-avatar">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80"
-                alt="Alex"
-                onError={(e) => {
-                  ;(e.target as HTMLElement).style.display = 'none'
-                }}
-              />
-              <span className="sos-avatar-fallback">A</span>
+              <span className="sos-avatar-fallback">{userInitial}</span>
             </div>
-            <span className="sos-user-name">Alex</span>
+            <span className="sos-user-name">{user?.fullName || 'Tourist'}</span>
           </div>
         </div>
 
