@@ -368,7 +368,7 @@ function Geofencing() {
 
             <h3 className="geo-side-subtitle">Safe Zones</h3>
             <ul className="geo-zone-list">
-              {ZONES.filter((z) => z.level === 'safe').map((z) => (
+              {zones.filter((z) => z.level === 'safe').map((z) => (
                 <li key={z.id}>
                   <button
                     type="button"

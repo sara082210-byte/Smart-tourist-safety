@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DestinationData, SafePlaceItem } from '../services/destinationData'
+import { DestinationData, SafePlaceItem, formatPlaceDistance, directionsUrl } from '../services/destinationData'
 
 interface DestinationMapProps {
   destination: DestinationData
@@ -111,11 +111,21 @@ export const DestinationMap: React.FC<DestinationMapProps> = ({
             <strong style="font-size: 13px;">${sp.name}</strong><br/>
             <span style="display:inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #e0f2fe; color: #0369a1; margin: 4px 0;">${sp.category}</span><br/>
             <span style="color: #475569;">${sp.address}</span><br/>
-            <span style="color: #0284c7; font-weight: 500;">Distance: ${sp.distance}</span><br/>
+            <span style="color: #0284c7; font-weight: 500;">Straight-line distance: ${formatPlaceDistance(destination, sp)}</span><br/>
             <a href="tel:${sp.phone.replace(/[^0-9+]/g, '')}" style="color: #16a34a; font-weight: 600; text-decoration: none; display: inline-block; margin-top: 4px;">📞 ${sp.phone}</a>
+            &nbsp;·&nbsp;<a href="${directionsUrl(sp)}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; font-weight: 600; text-decoration: none;">Directions ↗</a>
           </div>
         `)
       })
+
+      // Ensure the destination and every safe place marker are visible
+      if (places.length > 0) {
+        const bounds = L.latLngBounds([
+          [destination.latitude, destination.longitude],
+          ...places.map((sp) => [sp.lat, sp.lng] as [number, number]),
+        ])
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: zoom })
+      }
 
       mapInstanceRef.current = map
 

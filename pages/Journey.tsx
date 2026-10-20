@@ -825,60 +825,7 @@ export default function Journey() {
                         OpenStreetMap • Live Markers
                       </span>
                     </div>
-                    <DestinationMap destination={selectedDestination} height="240px" />
-                  </div>
-
-                  {/* Verified Nearby Safe Places */}
-                  <div style={{ marginTop: '16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                        Nearby Safe Places Around {selectedDestination.name} ({selectedDestination.safePlaces.length})
-                      </h4>
-                      <span style={{ fontSize: '11px', fontWeight: 500, color: '#16a34a' }}>
-                        ● Verified Directory
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' }}>
-                      {selectedDestination.safePlaces.map((sp) => (
-                        <div
-                          key={sp.id}
-                          style={{
-                            background: '#f8fafc',
-                            padding: '10px',
-                            borderRadius: '8px',
-                            border: '1px solid #e2e8f0',
-                            fontSize: '12px',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <strong style={{ color: '#0f172a' }}>{sp.name}</strong>
-                            <span
-                              style={{
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                fontSize: '10px',
-                                fontWeight: 600,
-                                background: sp.category === 'Police' ? '#dbeafe' : sp.category === 'Hospital' ? '#fee2e2' : '#f3e8ff',
-                                color: sp.category === 'Police' ? '#1d4ed8' : sp.category === 'Hospital' ? '#dc2626' : '#7e22ce',
-                              }}
-                            >
-                              {sp.category}
-                            </span>
-                          </div>
-                          <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '4px' }}>{sp.address}</div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-                            <span style={{ color: '#2563eb', fontWeight: 600 }}>{sp.distance} away</span>
-                            <a
-                              href={`tel:${sp.phone.replace(/[^0-9+]/g, '')}`}
-                              style={{ color: '#16a34a', textDecoration: 'none', fontWeight: 600 }}
-                            >
-                              📞 {sp.phone}
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <DestinationMap destination={selectedDestination} places={[]} height="280px" />
                   </div>
                 </div>
               </div>

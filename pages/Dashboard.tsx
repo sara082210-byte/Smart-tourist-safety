@@ -7,6 +7,7 @@ import {
   EmergencyContact as BackendContact,
   getEmergencyContacts,
   createEmergencyContact,
+  updateEmergencyContact,
   deleteEmergencyContact,
 } from '../src/services/contactService'
 import {
@@ -18,9 +19,13 @@ import DestinationMap from '../src/components/DestinationMap'
 import {
   UNIVERSAL_EMERGENCY_NUMBERS,
   CRITICAL_EMERGENCY_PHRASES,
+  formatPlaceDistance,
+  directionsUrl,
 } from '../src/services/destinationData'
 import './Dashboard.css'
 import './SOS.css'
+
+const PHONE_PATTERN = /^[+0-9\s\-()]{7,20}$/
 
 // Navigation Types
 type NavItemId =
@@ -37,8 +42,6 @@ type NavItemId =
 export default function Dashboard() {
   const {
     selectedDestination,
-    setDestination,
-    destinations: supportedDestinations,
     activeJourney,
     doCheckIn,
   } = useDestination()
@@ -82,7 +85,6 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<NavItemId>('dashboard')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
 
   // Simulation states
   const [sosActive, setSosActive] = useState(false)
@@ -109,6 +111,7 @@ export default function Dashboard() {
   const [newContactPhone, setNewContactPhone] = useState('')
   const [newContactRelation, setNewContactRelation] = useState('')
   const [contactNotice, setContactNotice] = useState<string | null>(null)
+  const [editingContactId, setEditingContactId] = useState<number | null>(null)
 
   // Incident reporting state (persisted to backend)
   const [userIncidents, setUserIncidents] = useState<BackendIncident[]>([])
@@ -123,6 +126,7 @@ export default function Dashboard() {
   // Offline kit cache status
   const [offlineCached, setOfflineCached] = useState(false)
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
+  const [phraseLang, setPhraseLang] = useState<'english' | 'hindi' | 'local'>('hindi')
 
   // Synchronize incident location default when destination changes
   useEffect(() => {
@@ -161,7 +165,6 @@ export default function Dashboard() {
   // Close all open popups/menus
   const closeAllMenus = () => {
     setIsProfileMenuOpen(false)
-    setIsNotificationsOpen(false)
   }
 
   // Selected SOS emergency type
@@ -202,24 +205,62 @@ export default function Dashboard() {
     setTimeout(() => setCheckInNotice(null), 4000)
   }
 
-  // Handle Add Personal Contact
+  // Reset the personal contact form (also exits edit mode)
+  const resetContactForm = () => {
+    setNewContactName('')
+    setNewContactPhone('')
+    setNewContactRelation('')
+    setEditingContactId(null)
+  }
+
+  // Start editing an existing personal contact
+  const handleStartEditContact = (c: BackendContact) => {
+    setContactsError(null)
+    setEditingContactId(c.id)
+    setNewContactName(c.name)
+    setNewContactPhone(c.phone)
+    setNewContactRelation(c.relationship)
+  }
+
+  // Handle Add / Update Personal Contact
   const handleAddContact = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newContactName.trim() || !newContactPhone.trim()) return
+    const name = newContactName.trim()
+    const phone = newContactPhone.trim()
+    const relationship = newContactRelation.trim()
+
+    if (!name || !phone || !relationship) {
+      setContactsError('Name, relationship and phone number are required.')
+      return
+    }
+    if (!PHONE_PATTERN.test(phone)) {
+      setContactsError('Please enter a valid phone number (7-20 digits; +, spaces, dashes and brackets allowed).')
+      return
+    }
 
     setContactsError(null)
     try {
-      const created = await createEmergencyContact({
-        name: newContactName.trim(),
-        phone: newContactPhone.trim(),
-        relationship: newContactRelation.trim() || 'Family / Friend',
-        isPrimary: userContacts.length === 0,
-      })
-      setUserContacts((prev) => [...prev, created])
-      setNewContactName('')
-      setNewContactPhone('')
-      setNewContactRelation('')
-      setContactNotice('Personal emergency contact saved to your profile.')
+      if (editingContactId !== null) {
+        const existing = userContacts.find((c) => c.id === editingContactId)
+        const updated = await updateEmergencyContact(editingContactId, {
+          name,
+          phone,
+          relationship,
+          isPrimary: existing?.isPrimary,
+        })
+        setUserContacts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        setContactNotice('Personal emergency contact updated.')
+      } else {
+        const created = await createEmergencyContact({
+          name,
+          phone,
+          relationship,
+          isPrimary: userContacts.length === 0,
+        })
+        setUserContacts((prev) => [...prev, created])
+        setContactNotice('Personal emergency contact saved to your profile.')
+      }
+      resetContactForm()
       setTimeout(() => setContactNotice(null), 3500)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save contact'
@@ -233,6 +274,7 @@ export default function Dashboard() {
     try {
       await deleteEmergencyContact(id)
       setUserContacts((prev) => prev.filter((c) => c.id !== id))
+      if (editingContactId === id) resetContactForm()
       setContactNotice('Emergency contact removed.')
       setTimeout(() => setContactNotice(null), 3000)
     } catch (err) {
@@ -275,10 +317,11 @@ export default function Dashboard() {
         destinationName: selectedDestination.name,
         state: selectedDestination.state,
         coordinates: [selectedDestination.latitude, selectedDestination.longitude],
-        guidance: selectedDestination.offlineKit,
+        guidance: selectedDestination.offlineGuidance,
         universalNumbers: UNIVERSAL_EMERGENCY_NUMBERS,
         localPolice: selectedDestination.localPolice,
         phrases: CRITICAL_EMERGENCY_PHRASES,
+        localPhrases: selectedDestination.localPhrases,
         savedAt: new Date().toISOString(),
       }
       localStorage.setItem(`offline_kit_cached_${selectedDestination.id}`, JSON.stringify(payload))
@@ -297,6 +340,71 @@ export default function Dashboard() {
       setCopyNotice(`Copied: "${text}"`)
       setTimeout(() => setCopyNotice(null), 2500)
     })
+  }
+
+  // Download offline guide as plain-text file
+  const handleDownloadOfflineGuide = () => {
+    try {
+      const lines = [
+        `SAFEJOURNEY - OFFLINE TRAVEL SAFETY GUIDE`,
+        `Destination: ${selectedDestination.name}, ${selectedDestination.state}`,
+        `Coordinates: ${selectedDestination.latitude.toFixed(4)}° N, ${selectedDestination.longitude.toFixed(4)}° E`,
+        `Exported: ${new Date().toLocaleString()}`,
+        ``,
+        `============================================================`,
+        `1. UNIVERSAL EMERGENCY NUMBERS (INDIA)`,
+        `============================================================`,
+        ...UNIVERSAL_EMERGENCY_NUMBERS.map(
+          (u) => `• ${u.service}: ${u.number}\n  ${u.description}\n  Source: ${u.officialSource}`
+        ),
+        ``,
+        `• Local Jurisdiction: ${selectedDestination.localPolice.name}`,
+        `  Phone: ${selectedDestination.localPolice.phone}`,
+        `  Address: ${selectedDestination.localPolice.address}`,
+        ``,
+        `============================================================`,
+        `2. DESTINATION SAFETY GUIDANCE (${selectedDestination.name})`,
+        `============================================================`,
+        `KEY SAFETY RESOURCES:`,
+        ...selectedDestination.offlineGuidance.highlights.map((h) => `• ${h}`),
+        ``,
+        `KNOWN HAZARDS:`,
+        ...selectedDestination.offlineGuidance.hazards.map((h) => `• ${h}`),
+        ``,
+        `PRECAUTIONS:`,
+        ...selectedDestination.offlineGuidance.precautions.map((p) => `• ${p}`),
+        ``,
+        `============================================================`,
+        `3. CRITICAL EMERGENCY PHRASES`,
+        `============================================================`,
+        ...[...CRITICAL_EMERGENCY_PHRASES, ...selectedDestination.localPhrases].map(
+          (ph) =>
+            `[${ph.situation}]\n  EN: "${ph.english}"\n  HI: "${ph.hindi}" (Pronunciation: "${ph.hindiPronunciation}")${
+              ph.localLanguage
+                ? `\n  ${ph.localLanguageName || 'Local'}: "${ph.localLanguage}" (Pronunciation: "${ph.localPronunciation}")`
+                : ''
+            }`
+        ),
+        ``,
+        `Notice: Real-time GPS, live maps, live weather alerts, and cloud sync require active internet connectivity.`,
+      ]
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `SafeJourney_OfflineKit_${selectedDestination.key}.txt`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      setCopyNotice(`Offline Guide downloaded for ${selectedDestination.name}!`)
+      setTimeout(() => setCopyNotice(null), 3000)
+    } catch {
+      setCopyNotice('Failed to download guide.')
+      setTimeout(() => setCopyNotice(null), 3000)
+    }
   }
 
   // Handle navigation click
@@ -528,20 +636,6 @@ export default function Dashboard() {
             </svg>
             <span className="dash-nav-label">Offline Kit</span>
           </button>
-
-          {/* 9. Profile */}
-          <button
-            type="button"
-            className={`dash-nav-item ${activeTab === 'profile' ? 'dash-nav-item--active' : ''}`}
-            onClick={() => handleNavClick('profile')}
-            id="nav-tab-profile"
-          >
-            <svg className="dash-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span className="dash-nav-label">My Profile</span>
-          </button>
         </nav>
 
         <div className="dash-sidebar-bottom">
@@ -589,80 +683,21 @@ export default function Dashboard() {
 
       {/* ===== MAIN CONTENT AREA ===== */}
       <main className="dash-main-content">
-        {/* Top Header / Profile / Notification Area */}
+        {/* Top Header with Profile in Right Top Corner */}
         <header className="dash-topbar" onClick={(e) => e.stopPropagation()}>
           <div className="dash-topbar-left">
             <span className="dash-welcome-eyebrow">SafeJourney Tourist Safety Network</span>
           </div>
 
           <div className="dash-topbar-right">
-            {/* Notifications Bell */}
-            <div className="dash-notifications-wrapper">
-              <button
-                type="button"
-                className="dash-icon-button"
-                aria-label="View safety alerts and notifications"
-                aria-expanded={isNotificationsOpen}
-                onClick={() => {
-                  setIsNotificationsOpen(!isNotificationsOpen)
-                  setIsProfileMenuOpen(false)
-                }}
-                id="dash-notifications-button"
-              >
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                {selectedDestination.alerts.length > 0 && <span className="notification-badge-dot" />}
-              </button>
-
-              {/* Notification Dropdown Panel */}
-              {isNotificationsOpen && (
-                <div className="dash-dropdown-panel dash-notifications-panel" id="dash-notifications-dropdown">
-                  <div className="dropdown-panel-header">
-                    <h4>Safety Advisories ({selectedDestination.name})</h4>
-                    <span className="notif-count-pill">{selectedDestination.alerts.length} Active</span>
-                  </div>
-                  <ul className="notifications-list">
-                    {selectedDestination.alerts.map((al) => (
-                      <li key={al.id} className="notification-item">
-                        <div className="notif-indicator" />
-                        <div className="notif-body">
-                          <p className="notif-text">
-                            <strong>{al.category}:</strong> {al.title}
-                          </p>
-                          <span className="notif-time">{al.time} • Sample Advisory</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="dropdown-panel-footer">
-                    <button
-                      type="button"
-                      className="dropdown-footer-link"
-                      onClick={() => {
-                        setIsNotificationsOpen(false)
-                        setActiveModal('alerts')
-                      }}
-                    >
-                      View all regional safety advisories →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Profile Avatar & Name Pill */}
+            {/* Profile Avatar & Name Pill in right top corner */}
             <div className="dash-profile-wrapper">
               <button
                 type="button"
                 className="dash-profile-pill"
                 aria-expanded={isProfileMenuOpen}
                 aria-label="User profile options"
-                onClick={() => {
-                  setIsProfileMenuOpen(!isProfileMenuOpen)
-                  setIsNotificationsOpen(false)
-                }}
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                 id="dash-profile-menu-button"
               >
                 <div className="user-avatar-image-frame">
@@ -736,55 +771,13 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Greeting Banner & Active Destination Selector */}
+        {/* Greeting Banner */}
         <section className="dash-greeting-section" aria-labelledby="dash-greeting-title">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-            <div>
-              <h1 id="dash-greeting-title" className="dash-greeting-title">
-                {userLoading ? 'Welcome!' : user?.fullName ? `Welcome, ${user.fullName}!` : 'Welcome!'}
-              </h1>
-              <p className="dash-greeting-subtitle">Stay safe. Explore more.</p>
-            </div>
-
-            {/* Destination Selector Pill */}
-            <div
-              style={{
-                background: '#ffffff',
-                padding: '8px 14px',
-                borderRadius: '12px',
-                border: '1px solid #cbd5e1',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-              }}
-            >
-              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Active Destination:
-              </span>
-              <select
-                id="dash-destination-selector"
-                value={selectedDestination.id}
-                onChange={(e) => setDestination(Number(e.target.value))}
-                style={{
-                  border: '1px solid #94a3b8',
-                  background: '#f8fafc',
-                  color: '#0f172a',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  outline: 'none',
-                }}
-              >
-                {supportedDestinations.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    📍 {d.name} ({d.state})
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <h1 id="dash-greeting-title" className="dash-greeting-title">
+              {userLoading ? 'Welcome!' : user?.fullName ? `Welcome, ${user.fullName}!` : 'Welcome!'}
+            </h1>
+            <p className="dash-greeting-subtitle">Stay safe. Explore more.</p>
           </div>
         </section>
 
@@ -1318,7 +1311,9 @@ export default function Dashboard() {
                           <p className="sp-address">{sp.address}</p>
                           <div className="sp-meta-tags">
                             <span className="sp-tag sp-tag-cat">{sp.category}</span>
-                            <span className="sp-tag sp-tag-dist">{sp.distance} away</span>
+                            <span className="sp-tag sp-tag-dist" title="Straight-line distance from the destination point">
+                              {formatPlaceDistance(selectedDestination, sp)} away
+                            </span>
                             {sp.isOpen247 && <span className="sp-tag sp-tag-open">24/7 Open</span>}
                             <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
                               ✓ {sp.verifiedSource}
@@ -1329,6 +1324,14 @@ export default function Dashboard() {
                       <div className="sp-card-right">
                         <a href={`tel:${sp.phone.replace(/[^0-9+]/g, '')}`} className="btn-sp-call">
                           📞 {sp.phone}
+                        </a>
+                        <a
+                          href={directionsUrl(sp)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: 'block', marginTop: '6px', fontSize: '12px', fontWeight: 600, color: '#2563eb', textDecoration: 'none', textAlign: 'center' }}
+                        >
+                          Directions ↗
                         </a>
                       </div>
                     </div>
@@ -1378,11 +1381,13 @@ export default function Dashboard() {
                             {item.level} Priority
                           </span>
                           <span className="alert-cat-badge">{item.category}</span>
-                          <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
-                            Sample Advisory
+                          <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: item.isDemo ? '#fef3c7' : '#dcfce7', color: item.isDemo ? '#92400e' : '#166534', fontWeight: 600 }}>
+                            {item.isDemo ? 'Sample Advisory' : 'Live'}
                           </span>
                         </div>
-                        <span className="alert-time-text">{item.time}</span>
+                        <span className="alert-time-text">
+                          {item.isDemo ? 'Illustrative example – not a live incident' : item.time}
+                        </span>
                       </div>
                       <h4 className="alert-headline">{item.title}</h4>
                       <p className="alert-details-text">{item.description}</p>
@@ -1527,9 +1532,19 @@ export default function Dashboard() {
                           <button
                             type="button"
                             className="btn-test-alert"
+                            onClick={() => handleStartEditContact(c)}
+                            title="Edit personal contact"
+                            id={`dash-contact-edit-${c.id}`}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-test-alert"
                             style={{ background: '#fee2e2', color: '#dc2626', borderColor: '#fca5a5' }}
                             onClick={() => handleDeleteContact(c.id)}
                             title="Delete personal contact"
+                            id={`dash-contact-delete-${c.id}`}
                           >
                             Remove
                           </button>
@@ -1541,13 +1556,17 @@ export default function Dashboard() {
               </div>
 
               {/* Add new personal contact form */}
-              <form className="add-contact-form" onSubmit={handleAddContact} style={{ marginTop: '20px' }}>
-                <h4 className="add-contact-title">+ Add New Personal Emergency Contact</h4>
+              <form className="add-contact-form" onSubmit={handleAddContact} style={{ marginTop: '20px' }} noValidate>
+                <h4 className="add-contact-title">
+                  {editingContactId !== null ? '✎ Edit Personal Emergency Contact' : '+ Add New Personal Emergency Contact'}
+                </h4>
                 <div className="form-grid-3">
                   <input
                     type="text"
                     placeholder="Full Name"
                     className="dash-input"
+                    id="dash-contact-name"
+                    maxLength={100}
                     value={newContactName}
                     onChange={(e) => setNewContactName(e.target.value)}
                     required
@@ -1556,6 +1575,8 @@ export default function Dashboard() {
                     type="tel"
                     placeholder="Phone (e.g. +91 9876543210)"
                     className="dash-input"
+                    id="dash-contact-phone"
+                    maxLength={20}
                     value={newContactPhone}
                     onChange={(e) => setNewContactPhone(e.target.value)}
                     required
@@ -1564,14 +1585,23 @@ export default function Dashboard() {
                     type="text"
                     placeholder="Relationship (e.g. Spouse / Parent)"
                     className="dash-input"
+                    id="dash-contact-relationship"
+                    maxLength={50}
                     value={newContactRelation}
                     onChange={(e) => setNewContactRelation(e.target.value)}
                     required
                   />
                 </div>
-                <button type="submit" className="btn-dash-accent-small" style={{ marginTop: '8px' }}>
-                  Save Personal Contact
-                </button>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button type="submit" className="btn-dash-accent-small" id="dash-contact-save">
+                    {editingContactId !== null ? 'Update Contact' : 'Save Personal Contact'}
+                  </button>
+                  {editingContactId !== null && (
+                    <button type="button" className="btn-dash-outline" onClick={resetContactForm} id="dash-contact-cancel-edit">
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
 
@@ -1628,14 +1658,47 @@ export default function Dashboard() {
                     <option value="Harassment">Harassment or Safety Concern</option>
                   </select>
 
-                  <label className="form-field-label">
-                    Incident Location / Landmark (defaults to selected destination)
-                  </label>
+                  <div style={{ marginBottom: '12px', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+                    <div style={{ color: '#1e3a8a', fontWeight: 600, marginBottom: '2px' }}>
+                      📍 Planned Destination: {selectedDestination.name}, {selectedDestination.state}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: '11px' }}>
+                      Destination coords: {selectedDestination.latitude.toFixed(4)}° N, {selectedDestination.longitude.toFixed(4)}° E. Specify the precise incident location or landmark below.
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label className="form-field-label" style={{ margin: 0 }}>
+                      Specific Incident Location / Landmark / Address
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if ('geolocation' in navigator) {
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              setIncidentLocation(
+                                `${selectedDestination.name} (GPS: ${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E)`
+                              )
+                            },
+                            () => {
+                              setIncidentNotice('Device GPS permission denied or unavailable.')
+                              setTimeout(() => setIncidentNotice(null), 3000)
+                            }
+                          )
+                        }
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11px', fontWeight: 600, cursor: 'pointer', padding: 0 }}
+                    >
+                      🛰️ Use Device GPS
+                    </button>
+                  </div>
                   <input
                     type="text"
                     className="dash-input"
                     value={incidentLocation}
                     onChange={(e) => setIncidentLocation(e.target.value)}
+                    placeholder="e.g. Near Calangute beach circle / Hotel entrance"
                     required
                   />
 
@@ -1736,6 +1799,35 @@ export default function Dashboard() {
             </div>
 
             <div className="modal-body">
+              {/* Offline availability status */}
+              <div
+                style={{
+                  marginBottom: '14px',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  lineHeight: 1.5,
+                  background: offlineCached ? '#f0fdf4' : '#fffbeb',
+                  border: `1px solid ${offlineCached ? '#bbf7d0' : '#fde68a'}`,
+                  color: offlineCached ? '#166534' : '#92400e',
+                }}
+                id="dash-offline-status"
+              >
+                {offlineCached ? (
+                  <>
+                    <strong>✓ Saved in this browser for {selectedDestination.name}.</strong> Emergency numbers, safety
+                    guidance and phrases are stored locally. For guaranteed access without the app, use{' '}
+                    <em>Download Guide</em> below.
+                  </>
+                ) : (
+                  <>
+                    <strong>Not saved offline yet.</strong> Use <em>Cache for Offline</em> or <em>Download Guide</em> to
+                    keep this kit available without internet.
+                  </>
+                )}{' '}
+                Live maps, alerts and nearby-place search always require an internet connection.
+              </div>
+
               <div className="offline-kit-grid">
                 {/* 1. Universal Emergency Numbers (India) */}
                 <div className="offline-item-card">
@@ -1748,6 +1840,7 @@ export default function Dashboard() {
                           {u.number}
                         </a>
                         <div style={{ fontSize: '11px', color: '#64748b' }}>{u.description}</div>
+                        <div style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>Source: {u.officialSource}</div>
                       </li>
                     ))}
                     <li style={{ fontSize: '13px', lineHeight: 1.4 }}>
@@ -1755,92 +1848,158 @@ export default function Dashboard() {
                       <a href={`tel:${selectedDestination.localPolice.phone.replace(/[^0-9+]/g, '')}`} style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
                         {selectedDestination.localPolice.phone}
                       </a>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>Local police station for {selectedDestination.name}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>Local police for {selectedDestination.name} · {selectedDestination.localPolice.address}</div>
                     </li>
                   </ul>
+                  <p style={{ fontSize: '10px', color: '#94a3b8', margin: 0 }}>
+                    These numbers apply within India only. Outside India, use that country's emergency number.
+                  </p>
                 </div>
 
                 {/* 2. Destination-Specific Guidance */}
                 <div className="offline-item-card">
                   <h4>🛡️ {selectedDestination.name} Safety Guidance</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                    <div>
-                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Beach / Coastal Safety:</strong>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
-                        {selectedDestination.offlineKit.beachOrMountainSafety}
-                      </p>
-                    </div>
-                    <div>
-                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Weather & Terrain Precautions:</strong>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
-                        {selectedDestination.offlineKit.weatherAndMonsoon}
-                      </p>
-                    </div>
-                    <div>
-                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Hydration & Sun Safety:</strong>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
-                        {selectedDestination.offlineKit.heatAndHydration}
-                      </p>
-                    </div>
-                    <div>
-                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Local Transit & Crowds:</strong>
-                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
-                        {selectedDestination.offlineKit.localTransportAdvice}
-                      </p>
-                    </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                    {(
+                      [
+                        ['Key Safety Resources', selectedDestination.offlineGuidance.highlights],
+                        ['Known Hazards', selectedDestination.offlineGuidance.hazards],
+                        ['Precautions', selectedDestination.offlineGuidance.precautions],
+                      ] as const
+                    ).map(([label, items]) => (
+                      <div key={label}>
+                        <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>{label}</strong>
+                        {items.length === 0 ? (
+                          <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>No guidance available.</p>
+                        ) : (
+                          <ul style={{ margin: '4px 0 0', paddingLeft: '18px', fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
+                            {items.map((txt) => (
+                              <li key={txt}>{txt}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
               {/* 3. Critical Emergency Phrases */}
-              <div style={{ marginTop: '20px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
-                  🗣️ Critical Emergency Phrases (English & Hindi)
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '8px' }}>
-                  {CRITICAL_EMERGENCY_PHRASES.map((ph) => (
-                    <div
-                      key={ph.id}
-                      style={{
-                        background: '#f8fafc',
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #e2e8f0',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
-                          {ph.english}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyPhrase(ph.hindi)}
-                          style={{
-                            background: '#e2e8f0',
-                            border: 'none',
-                            padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                          }}
-                          title="Copy Hindi translation"
-                        >
-                          Copy
-                        </button>
-                      </div>
-                      <div style={{ fontSize: '13px', color: '#2563eb', fontWeight: 600, marginTop: '4px' }}>
-                        {ph.hindi}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
-                        Pronunciation: "{ph.hindiPronunciation}"
+              {(() => {
+                const allPhrases = [...CRITICAL_EMERGENCY_PHRASES, ...selectedDestination.localPhrases]
+                const localLangName = selectedDestination.localPhrases.find((p) => p.localLanguageName)?.localLanguageName
+                const display = (ph: (typeof allPhrases)[number]) => {
+                  if (phraseLang === 'english') return { text: ph.english, pron: null as string | null, lang: 'English' }
+                  if (phraseLang === 'local' && ph.localLanguage) {
+                    return { text: ph.localLanguage, pron: ph.localPronunciation ?? null, lang: ph.localLanguageName ?? 'Local' }
+                  }
+                  return { text: ph.hindi, pron: ph.hindiPronunciation, lang: 'Hindi' }
+                }
+                return (
+                  <div style={{ marginTop: '20px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                        🗣️ Critical Emergency Phrases
+                      </h4>
+                      <div role="group" aria-label="Phrase language" style={{ display: 'flex', gap: '4px' }}>
+                        {(
+                          [
+                            ['english', 'English'],
+                            ['hindi', 'हिन्दी Hindi'],
+                            ...(localLangName ? [['local', localLangName] as const] : []),
+                          ] as const
+                        ).map(([key, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            id={`dash-phrase-lang-${key}`}
+                            onClick={() => setPhraseLang(key)}
+                            aria-pressed={phraseLang === key}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: '1px solid #cbd5e1',
+                              background: phraseLang === key ? '#2563eb' : '#ffffff',
+                              color: phraseLang === key ? '#ffffff' : '#334155',
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    {phraseLang === 'local' && (
+                      <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 8px' }}>
+                        {localLangName} translations are available only for some phrases; others fall back to Hindi.
+                      </p>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '8px' }}>
+                      {allPhrases.map((ph) => {
+                        const d = display(ph)
+                        return (
+                          <div
+                            key={ph.id}
+                            style={{
+                              background: '#f8fafc',
+                              padding: '10px 12px',
+                              borderRadius: '8px',
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                              {ph.situation}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                              <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>{ph.english}</div>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPhrase(d.text)}
+                                style={{
+                                  background: '#e2e8f0',
+                                  border: 'none',
+                                  padding: '3px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  cursor: 'pointer',
+                                  flexShrink: 0,
+                                }}
+                                title={`Copy ${d.lang} phrase`}
+                              >
+                                Copy
+                              </button>
+                            </div>
+                            {phraseLang !== 'english' && (
+                              <>
+                                <div style={{ fontSize: '13px', color: '#2563eb', fontWeight: 600, marginTop: '4px' }}>
+                                  {d.text} <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 500 }}>({d.lang})</span>
+                                </div>
+                                {d.pron && (
+                                  <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                                    Pronunciation: "{d.pron}"
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <p style={{ fontSize: '10px', color: '#94a3b8', marginTop: '8px' }}>
+                      Translations are provided to help communication and are not certified official wording. When in
+                      doubt, call 112 or the 1363 multilingual tourist helpline.
+                    </p>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="modal-footer">
+              <button type="button" className="btn-dash-outline" onClick={handleDownloadOfflineGuide} id="dash-offline-download">
+                ⬇ Download Guide (.txt)
+              </button>
               <button type="button" className="btn-dash-outline" onClick={() => setActiveModal(null)}>
                 Close
               </button>

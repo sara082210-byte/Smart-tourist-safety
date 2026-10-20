@@ -260,23 +260,35 @@
   width: 100%;
 }
 
-/* Top Bar: Spacing + Notifications & Profile Pill */
+/* Top Bar: Spacing + Profile Pill in Top-Right Corner */
+.dash-topbar,
 .dash-top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
+  width: 100%;
 }
 
-.dash-top-spacer {
-  flex: 1;
+.dash-topbar-left {
+  display: flex;
+  align-items: center;
 }
 
+.dash-topbar-right,
 .dash-top-actions {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
+  margin-left: auto;
   position: relative;
+}
+
+.dash-welcome-eyebrow {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.2px;
 }
 
 /* Notification Bell */

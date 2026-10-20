@@ -880,3 +880,30 @@ export function findDestinationByQuery(query: string): DestinationData | null {
   }
   return null
 }
+
+/**
+ * Straight-line (great-circle) distance in km between two coordinates.
+ * Used instead of hand-entered distance strings so displayed distances are
+ * always derived from the actual place and destination coordinates.
+ */
+export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+/** Human-readable straight-line distance from the destination point to a safe place. */
+export function formatPlaceDistance(dest: DestinationData, place: SafePlaceItem): string {
+  const km = distanceKm(dest.latitude, dest.longitude, place.lat, place.lng)
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`
+}
+
+/** Keyless directions link (opens the user's maps app / Google Maps in browser). */
+export function directionsUrl(place: SafePlaceItem): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
+}
