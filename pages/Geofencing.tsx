@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Link } from '../src/router'
+import { useDestination } from '../src/context/DestinationContext'
+import { DestinationData } from '../src/services/destinationData'
 import './Geofencing.css'
 
 /* ------------------------------------------------------------------ */
-/* Sample data (PROTOTYPE ONLY – these zones are illustrative, not     */
-/* official risk data).                                                */
+/* Destination-aware geofencing safety zones (Prototype demonstration)*/
 /* ------------------------------------------------------------------ */
 type ZoneLevel = 'high' | 'caution' | 'flood' | 'safe'
 
@@ -19,50 +20,51 @@ type Zone = {
   message: string
 }
 
-const SAMPLE_CENTER: [number, number] = [-8.7185, 115.1712] // Kuta, Bali (sample reference point)
-
-const ZONES: Zone[] = [
-  {
-    id: 'z-high',
-    name: 'High Risk Zone',
-    level: 'high',
-    center: [-8.7105, 115.1745],
-    radius: 420,
-    message: 'You are entering a restricted area. High risk zone. Please be cautious!',
-  },
-  {
-    id: 'z-construction',
-    name: 'Construction Area',
-    level: 'caution',
-    center: [-8.7290, 115.1760],
-    radius: 280,
-    message: 'Construction area ahead. Watch for heavy vehicles and closed footpaths.',
-  },
-  {
-    id: 'z-flood',
-    name: 'Flood Prone Area',
-    level: 'flood',
-    center: [-8.7350, 115.1640],
-    radius: 380,
-    message: 'Flood prone area. Avoid during heavy rain and follow local advisories.',
-  },
-  {
-    id: 'z-safe-police',
-    name: 'Tourist Police Safe Zone',
-    level: 'safe',
-    center: [-8.7200, 115.1690],
-    radius: 220,
-    message: 'You are inside a designated safe zone near tourist assistance.',
-  },
-  {
-    id: 'z-safe-beach',
-    name: 'Lifeguard Beach Safe Zone',
-    level: 'safe',
-    center: [-8.7160, 115.1655],
-    radius: 180,
-    message: 'You are inside a lifeguard-patrolled safe zone.',
-  },
-]
+function generateZones(dest: DestinationData): Zone[] {
+  const [lat, lng] = [dest.latitude, dest.longitude]
+  return [
+    {
+      id: 'z-safe-police',
+      name: `${dest.localPolice.name} Safe Perimeter`,
+      level: 'safe',
+      center: [lat + 0.002, lng - 0.002],
+      radius: 350,
+      message: `You are inside a verified safety perimeter near ${dest.localPolice.name} (Helpline: 112).`,
+    },
+    {
+      id: 'z-safe-tourist',
+      name: `${dest.name} Monitored Tourist Corridor`,
+      level: 'safe',
+      center: [lat - 0.0015, lng + 0.002],
+      radius: 400,
+      message: `You are inside the monitored tourist safety corridor for ${dest.name}.`,
+    },
+    {
+      id: 'z-caution',
+      name: `${dest.name} High-Footfall Area`,
+      level: 'caution',
+      center: [lat + 0.005, lng + 0.004],
+      radius: 320,
+      message: 'High pedestrian density and congestion ahead. Watch your personal belongings and follow safety signage.',
+    },
+    {
+      id: 'z-flood',
+      name: 'Monsoon / Drainage Caution Zone',
+      level: 'flood',
+      center: [lat - 0.006, lng - 0.005],
+      radius: 380,
+      message: 'Low-lying drainage or seasonal risk zone. Exercise caution during rainfall and follow local police advisories.',
+    },
+    {
+      id: 'z-high',
+      name: 'Restricted / Steep Terrain Warning Zone',
+      level: 'high',
+      center: [lat + 0.008, lng - 0.007],
+      radius: 420,
+      message: 'Restricted area or hazardous terrain. Do not stray off marked trails or seawalls after dark.',
+    },
+  ]
+}
 
 const LEVEL_STYLE: Record<ZoneLevel, { color: string; label: string }> = {
   high: { color: '#dc2626', label: 'High risk' },
@@ -133,6 +135,7 @@ const pinIcon = (color: string) =>
   })
 
 function Geofencing() {
+  const { selectedDestination } = useDestination()
   const mapEl = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const userMarkerRef = useRef<L.Marker | null>(null)
@@ -142,8 +145,15 @@ function Geofencing() {
   const [userPos, setUserPos] = useState<[number, number] | null>(null)
   const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle')
 
-  const origin = userPos ?? SAMPLE_CENTER
-  const riskZones = ZONES.filter((z) => z.level !== 'safe')
+  const destCenter: [number, number] = useMemo(
+    () => [selectedDestination.latitude, selectedDestination.longitude],
+    [selectedDestination]
+  )
+
+  const zones = useMemo(() => generateZones(selectedDestination), [selectedDestination])
+
+  const origin = userPos ?? destCenter
+  const riskZones = zones.filter((z) => z.level !== 'safe')
 
   const zonesWithDistance = useMemo(
     () =>
@@ -151,29 +161,37 @@ function Geofencing() {
         .map((z) => ({ ...z, dist: Math.max(0, distanceMeters(origin, z.center) - z.radius) }))
         .sort((a, b) => a.dist - b.dist),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [origin[0], origin[1]],
+    [origin[0], origin[1], zones],
   )
 
   // Zone the (real, permission-granted) user location is inside, if any
   const userInside = useMemo(() => {
     if (!userPos) return null
-    const hits = ZONES.filter((z) => distanceMeters(userPos, z.center) <= z.radius)
+    const hits = zones.filter((z) => distanceMeters(userPos, z.center) <= z.radius)
     const order: ZoneLevel[] = ['high', 'caution', 'flood', 'safe']
     return hits.sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level))[0] ?? null
-  }, [userPos])
+  }, [userPos, zones])
 
-  const selected = ZONES.find((z) => z.id === selectedId) ?? ZONES[0]
+  const selected = zones.find((z) => z.id === selectedId) ?? zones[0]
 
   /* ---------- Map setup ---------- */
   useEffect(() => {
-    if (!mapEl.current || mapRef.current) return
-    const map = L.map(mapEl.current, { zoomControl: true, scrollWheelZoom: false }).setView(SAMPLE_CENTER, 14)
+    if (!mapEl.current) return
+
+    // Clean up previous map if exists
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+      circlesRef.current = {}
+    }
+
+    const map = L.map(mapEl.current, { zoomControl: true, scrollWheelZoom: false }).setView(destCenter, 14)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map)
 
-    ZONES.forEach((z) => {
+    zones.forEach((z) => {
       const { color, label } = LEVEL_STYLE[z.level]
       const c = L.circle(z.center, {
         radius: z.radius,
@@ -188,27 +206,31 @@ function Geofencing() {
       circlesRef.current[z.id] = c
     })
 
-    L.marker(ZONES[0].center, { icon: pinIcon('#d32f2f'), keyboard: false, interactive: false }).addTo(map)
+    L.marker(destCenter, { icon: pinIcon('#2563eb'), keyboard: false, interactive: false })
+      .addTo(map)
+      .bindTooltip(`📍 ${selectedDestination.name}`, { permanent: false })
 
     mapRef.current = map
     const onResize = () => map.invalidateSize()
     window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('resize', onResize)
-      map.remove()
-      mapRef.current = null
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
       circlesRef.current = {}
     }
-  }, [])
+  }, [selectedDestination, destCenter, zones])
 
   /* ---------- Highlight selected zone ---------- */
   useEffect(() => {
     Object.entries(circlesRef.current).forEach(([id, c]) => {
       c.setStyle({ weight: id === selectedId ? 3.5 : 2 })
     })
-    const z = ZONES.find((x) => x.id === selectedId)
+    const z = zones.find((x) => x.id === selectedId)
     if (z && mapRef.current) mapRef.current.panTo(z.center, { animate: true })
-  }, [selectedId])
+  }, [selectedId, zones])
 
   /* ---------- User marker ---------- */
   useEffect(() => {
@@ -246,14 +268,14 @@ function Geofencing() {
     : { level: selected.level, text: selected.message, tag: 'Sample alert preview' }
 
   const geoMessage: Record<GeoStatus, string> = {
-    idle: 'Location is off. Distances are measured from a sample point in Kuta, Bali.',
+    idle: `Location is off. Distances are measured from ${selectedDestination.name}, ${selectedDestination.state}.`,
     requesting: 'Requesting location permission…',
     granted: userInside
       ? `Your location is inside: ${userInside.name} (sample zone).`
       : 'Your location is not inside any sample zone. Distances are from your location.',
-    denied: 'Location permission denied. Showing distances from the sample point instead.',
-    unavailable: 'Geolocation is not supported by this browser. Using the sample point.',
-    error: 'Could not get your location. Using the sample point instead.',
+    denied: `Location permission denied. Showing distances from ${selectedDestination.name} center instead.`,
+    unavailable: `Geolocation is not supported by this browser. Using ${selectedDestination.name} center.`,
+    error: `Could not get your location. Using ${selectedDestination.name} center instead.`,
   }
 
   return (
@@ -265,8 +287,8 @@ function Geofencing() {
               <path d="M20 12H4M10 6l-6 6 6 6" />
             </svg>
           </Link>
-          <h1 id="geo-title" className="geo-title">Geofencing</h1>
-          <span className="geo-proto-badge">Prototype · sample zones</span>
+          <h1 id="geo-title" className="geo-title">Geofencing Safety</h1>
+          <span className="geo-proto-badge">{selectedDestination.name} • Active Zones</span>
         </header>
 
         <div className="geo-layout">

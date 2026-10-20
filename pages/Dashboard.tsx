@@ -2,10 +2,27 @@ import { useEffect, useState } from 'react'
 import { Link, navigate } from '../src/router'
 import { getCurrentUser, logout } from '../src/services/authService'
 import type { User } from '../src/services/authService'
+import { useDestination } from '../src/context/DestinationContext'
+import {
+  EmergencyContact as BackendContact,
+  getEmergencyContacts,
+  createEmergencyContact,
+  deleteEmergencyContact,
+} from '../src/services/contactService'
+import {
+  IncidentReport as BackendIncident,
+  getIncidents,
+  createIncident,
+} from '../src/services/incidentService'
+import DestinationMap from '../src/components/DestinationMap'
+import {
+  UNIVERSAL_EMERGENCY_NUMBERS,
+  CRITICAL_EMERGENCY_PHRASES,
+} from '../src/services/destinationData'
 import './Dashboard.css'
 import './SOS.css'
 
-// Types
+// Navigation Types
 type NavItemId =
   | 'dashboard'
   | 'sos'
@@ -17,118 +34,15 @@ type NavItemId =
   | 'offline'
   | 'profile'
 
-type SafePlace = {
-  id: string
-  name: string
-  category: 'Hospital' | 'Police' | 'Embassy' | 'Tourist Center'
-  distance: string
-  phone: string
-  address: string
-  isOpen247: boolean
-}
-
-type EmergencyContact = {
-  id: string
-  name: string
-  relationship: string
-  phone: string
-  isPrimary: boolean
-}
-
-type AlertItem = {
-  id: string
-  title: string
-  category: 'Weather' | 'Security' | 'Advisory'
-  level: 'Moderate' | 'High' | 'Low'
-  time: string
-  description: string
-}
-
-const INITIAL_SAFE_PLACES: SafePlace[] = [
-  {
-    id: 'sp-1',
-    name: 'BIMC Hospital Kuta',
-    category: 'Hospital',
-    distance: '1.2 km',
-    phone: '+62 361 761 263',
-    address: 'Jl. Bypass Ngurah Rai No.100X, Kuta',
-    isOpen247: true,
-  },
-  {
-    id: 'sp-2',
-    name: 'Denpasar Tourist Police Station',
-    category: 'Police',
-    distance: '2.8 km',
-    phone: '+62 361 224 111',
-    address: 'Jl. Gunung Sanghyang No.110, Denpasar',
-    isOpen247: true,
-  },
-  {
-    id: 'sp-3',
-    name: 'Australian Consulate-General Bali',
-    category: 'Embassy',
-    distance: '4.5 km',
-    phone: '+62 361 241 118',
-    address: 'Jl. Tantular No.32, Renon, Denpasar',
-    isOpen247: false,
-  },
-  {
-    id: 'sp-4',
-    name: 'Bali Tourism Board 24/7 Help Desk',
-    category: 'Tourist Center',
-    distance: '3.1 km',
-    phone: '+62 361 235 600',
-    address: 'Jl. Raya Puputan No.41, Denpasar',
-    isOpen247: true,
-  },
-]
-
-const INITIAL_CONTACTS: EmergencyContact[] = [
-  {
-    id: 'c-1',
-    name: 'Sarah Jenkins',
-    relationship: 'Spouse',
-    phone: '+1 (555) 382-9102',
-    isPrimary: true,
-  },
-  {
-    id: 'c-2',
-    name: 'John Davis',
-    relationship: 'Brother',
-    phone: '+1 (555) 904-2194',
-    isPrimary: false,
-  },
-  {
-    id: 'c-3',
-    name: 'Bali Tourist Police Helpline',
-    relationship: 'Official Local Service',
-    phone: '110 / +62 361 224 111',
-    isPrimary: false,
-  },
-]
-
-const INITIAL_ALERTS: AlertItem[] = [
-  {
-    id: 'a-1',
-    title: 'High Surf & Strong Undercurrents Advisory',
-    category: 'Weather',
-    level: 'Moderate',
-    time: '25 mins ago',
-    description:
-      'High surf advisory along southwest coastlines (Kuta, Canggu, and Uluwatu). Swimmers are urged to stay within flagged safe zones and follow lifeguard directives.',
-  },
-  {
-    id: 'a-2',
-    title: 'Traffic Re-routing for Cultural Festival',
-    category: 'Advisory',
-    level: 'Low',
-    time: '2 hours ago',
-    description:
-      'Temporary road closures in central Ubud due to ceremony procession until 18:00. Use southern bypass routes for airport transfers.',
-  },
-]
-
 export default function Dashboard() {
+  const {
+    selectedDestination,
+    setDestination,
+    destinations: supportedDestinations,
+    activeJourney,
+    doCheckIn,
+  } = useDestination()
+
   const [user, setUser] = useState<User | null>(null)
   const [userLoading, setUserLoading] = useState(true)
 
@@ -180,27 +94,69 @@ export default function Dashboard() {
     'journey' | 'safePlaces' | 'alerts' | 'contacts' | 'checkIn' | 'report' | 'offline' | 'profile' | null
   >(null)
 
-  // Data states
-  const [contacts, setContacts] = useState<EmergencyContact[]>(INITIAL_CONTACTS)
-  const [alerts, setAlerts] = useState<AlertItem[]>(INITIAL_ALERTS)
-  const [safePlaces] = useState<SafePlace[]>(INITIAL_SAFE_PLACES)
+  // Safe places filter state
   const [safePlaceFilter, setSafePlaceFilter] = useState<string>('All')
 
   // Check-in state
-  const [lastCheckIn, setLastCheckIn] = useState('Checked in: Today at 08:00 AM')
+  const [lastCheckIn, setLastCheckIn] = useState(activeJourney?.lastCheckIn || 'Checked in: Today at 08:00 AM')
   const [checkInNotice, setCheckInNotice] = useState<string | null>(null)
 
-  // New contact form state
+  // User personal contacts (loaded from backend)
+  const [userContacts, setUserContacts] = useState<BackendContact[]>([])
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactsError, setContactsError] = useState<string | null>(null)
   const [newContactName, setNewContactName] = useState('')
   const [newContactPhone, setNewContactPhone] = useState('')
   const [newContactRelation, setNewContactRelation] = useState('')
   const [contactNotice, setContactNotice] = useState<string | null>(null)
 
-  // Incident report form state
+  // Incident reporting state (persisted to backend)
+  const [userIncidents, setUserIncidents] = useState<BackendIncident[]>([])
   const [incidentType, setIncidentType] = useState('General Assistance')
-  const [incidentLocation, setIncidentLocation] = useState('Bali, Indonesia')
+  const [incidentLocation, setIncidentLocation] = useState(
+    `${selectedDestination.name}, ${selectedDestination.state}`
+  )
   const [incidentDetails, setIncidentDetails] = useState('')
   const [incidentSubmitted, setIncidentSubmitted] = useState(false)
+  const [incidentNotice, setIncidentNotice] = useState<string | null>(null)
+
+  // Offline kit cache status
+  const [offlineCached, setOfflineCached] = useState(false)
+  const [copyNotice, setCopyNotice] = useState<string | null>(null)
+
+  // Synchronize incident location default when destination changes
+  useEffect(() => {
+    setIncidentLocation(`${selectedDestination.name}, ${selectedDestination.state}`)
+    try {
+      setOfflineCached(Boolean(localStorage.getItem(`offline_kit_cached_${selectedDestination.id}`)))
+    } catch {
+      setOfflineCached(false)
+    }
+  }, [selectedDestination])
+
+  // Load user contacts and incidents from backend
+  const loadUserData = async () => {
+    setContactsLoading(true)
+    try {
+      const fetchedContacts = await getEmergencyContacts()
+      setUserContacts(fetchedContacts)
+    } catch {
+      // Unauthenticated or network issue
+    } finally {
+      setContactsLoading(false)
+    }
+
+    try {
+      const fetchedIncidents = await getIncidents()
+      setUserIncidents(fetchedIncidents)
+    } catch {
+      // Ignore
+    }
+  }
+
+  useEffect(() => {
+    loadUserData()
+  }, [])
 
   // Close all open popups/menus
   const closeAllMenus = () => {
@@ -224,7 +180,7 @@ export default function Dashboard() {
     setSosActive(true)
     const typeLabel = type.charAt(0).toUpperCase() + type.slice(1)
     setSosStatusMessage(
-      `SIMULATED ${typeLabel.toUpperCase()} ASSISTANCE ACTIVE: Prototype distress signal dispatched to Bali Tourist Police & 3 saved emergency contacts with mock coordinates (-8.4095° S, 115.1889° E).`
+      `SIMULATED ${typeLabel.toUpperCase()} ASSISTANCE: Distress signal simulated for ${selectedDestination.name} (${selectedDestination.latitude.toFixed(4)}° N, ${selectedDestination.longitude.toFixed(4)}° E). Official emergency contact: 112 & ${selectedDestination.localPolice.name}.`
     )
   }
 
@@ -234,43 +190,113 @@ export default function Dashboard() {
   }
 
   // Handle Journey Check-in
-  const handleCheckInNow = () => {
+  const handleCheckInNow = async () => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     setLastCheckIn(`Checked in: Today at ${timeStr}`)
-    setCheckInNotice('Safety check-in recorded successfully! Status updated for your emergency contacts.')
+    try {
+      await doCheckIn()
+    } catch {
+      // Local state fallback
+    }
+    setCheckInNotice(`Safety check-in recorded for ${selectedDestination.name}! Emergency contacts updated.`)
     setTimeout(() => setCheckInNotice(null), 4000)
   }
 
-  // Handle Add Contact
-  const handleAddContact = (e: React.FormEvent) => {
+  // Handle Add Personal Contact
+  const handleAddContact = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newContactName.trim() || !newContactPhone.trim()) return
 
-    const newContact: EmergencyContact = {
-      id: `c-${Date.now()}`,
-      name: newContactName.trim(),
-      phone: newContactPhone.trim(),
-      relationship: newContactRelation.trim() || 'Emergency Contact',
-      isPrimary: false,
+    setContactsError(null)
+    try {
+      const created = await createEmergencyContact({
+        name: newContactName.trim(),
+        phone: newContactPhone.trim(),
+        relationship: newContactRelation.trim() || 'Family / Friend',
+        isPrimary: userContacts.length === 0,
+      })
+      setUserContacts((prev) => [...prev, created])
+      setNewContactName('')
+      setNewContactPhone('')
+      setNewContactRelation('')
+      setContactNotice('Personal emergency contact saved to your profile.')
+      setTimeout(() => setContactNotice(null), 3500)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save contact'
+      setContactsError(msg)
     }
+  }
 
-    setContacts((prev) => [...prev, newContact])
-    setNewContactName('')
-    setNewContactPhone('')
-    setNewContactRelation('')
-    setContactNotice('New emergency contact added to your demonstration profile.')
-    setTimeout(() => setContactNotice(null), 3500)
+  // Handle Delete Personal Contact
+  const handleDeleteContact = async (id: number) => {
+    setContactsError(null)
+    try {
+      await deleteEmergencyContact(id)
+      setUserContacts((prev) => prev.filter((c) => c.id !== id))
+      setContactNotice('Emergency contact removed.')
+      setTimeout(() => setContactNotice(null), 3000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete contact'
+      setContactsError(msg)
+    }
   }
 
   // Handle Incident Report Submit
-  const handleReportSubmit = (e: React.FormEvent) => {
+  const handleReportSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIncidentSubmitted(true)
-    setTimeout(() => {
-      setIncidentSubmitted(false)
-      setIncidentDetails('')
-      setActiveModal(null)
-    }, 2500)
+    if (!incidentDetails.trim() || !incidentLocation.trim()) return
+
+    setIncidentNotice(null)
+    try {
+      const created = await createIncident({
+        incidentType,
+        location: incidentLocation.trim(),
+        destinationName: selectedDestination.name,
+        details: incidentDetails.trim(),
+      })
+      setUserIncidents((prev) => [created, ...prev])
+      setIncidentSubmitted(true)
+      setTimeout(() => {
+        setIncidentSubmitted(false)
+        setIncidentDetails('')
+        setActiveModal(null)
+      }, 2500)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit report'
+      setIncidentNotice(msg)
+    }
+  }
+
+  // Handle Cache Offline Kit
+  const handleCacheOfflineKit = () => {
+    try {
+      const payload = {
+        destinationId: selectedDestination.id,
+        destinationName: selectedDestination.name,
+        state: selectedDestination.state,
+        coordinates: [selectedDestination.latitude, selectedDestination.longitude],
+        guidance: selectedDestination.offlineKit,
+        universalNumbers: UNIVERSAL_EMERGENCY_NUMBERS,
+        localPolice: selectedDestination.localPolice,
+        phrases: CRITICAL_EMERGENCY_PHRASES,
+        savedAt: new Date().toISOString(),
+      }
+      localStorage.setItem(`offline_kit_cached_${selectedDestination.id}`, JSON.stringify(payload))
+      setOfflineCached(true)
+      setCopyNotice('Offline Kit cached to browser storage! Available without internet.')
+      setTimeout(() => setCopyNotice(null), 3500)
+    } catch {
+      setCopyNotice('Could not save to local storage.')
+      setTimeout(() => setCopyNotice(null), 3000)
+    }
+  }
+
+  // Copy phrase to clipboard helper
+  const handleCopyPhrase = (text: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopyNotice(`Copied: "${text}"`)
+      setTimeout(() => setCopyNotice(null), 2500)
+    })
   }
 
   // Handle navigation click
@@ -298,12 +324,12 @@ export default function Dashboard() {
     }
   }
 
-  // Handle Logout: end the server session, then return to login
+  // Handle Logout
   const handleLogout = async () => {
     try {
       await logout()
     } catch {
-      /* even if the request fails, leave the dashboard */
+      /* ignore */
     }
     navigate('/login')
   }
@@ -311,8 +337,8 @@ export default function Dashboard() {
   // Filtered Safe Places
   const filteredSafePlaces =
     safePlaceFilter === 'All'
-      ? safePlaces
-      : safePlaces.filter((item) => item.category === safePlaceFilter)
+      ? selectedDestination.safePlaces
+      : selectedDestination.safePlaces.filter((item) => item.category === safePlaceFilter)
 
   return (
     <div className="dashboard-container" onClick={closeAllMenus}>
@@ -454,7 +480,9 @@ export default function Dashboard() {
               <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             </svg>
             <span className="dash-nav-label">Alerts</span>
-            {alerts.length > 0 && <span className="dash-nav-pill-badge">{alerts.length}</span>}
+            {selectedDestination.alerts.length > 0 && (
+              <span className="dash-nav-pill-badge">{selectedDestination.alerts.length}</span>
+            )}
           </button>
 
           {/* 6. Emergency Contacts */}
@@ -550,69 +578,63 @@ export default function Dashboard() {
             id="nav-tab-logout"
           >
             <svg className="dash-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-              <line x1="12" y1="2" x2="12" y2="12" />
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            <span className="dash-nav-label">Logout</span>
+            <span className="dash-nav-label">Log Out</span>
           </button>
         </div>
       </aside>
 
-      {/* ===== MAIN DASHBOARD WORKSPACE ===== */}
-      <main className="dash-content-area">
-        {/* Top Header Row with Notifications & Profile */}
-        <header className="dash-top-bar" onClick={(e) => e.stopPropagation()}>
-          <div className="dash-top-spacer" />
+      {/* ===== MAIN CONTENT AREA ===== */}
+      <main className="dash-main-content">
+        {/* Top Header / Profile / Notification Area */}
+        <header className="dash-topbar" onClick={(e) => e.stopPropagation()}>
+          <div className="dash-topbar-left">
+            <span className="dash-welcome-eyebrow">SafeJourney Tourist Safety Network</span>
+          </div>
 
-          <div className="dash-top-actions">
-            {/* Notification Bell */}
-            <div className="dash-bell-wrapper">
+          <div className="dash-topbar-right">
+            {/* Notifications Bell */}
+            <div className="dash-notifications-wrapper">
               <button
                 type="button"
-                className="dash-bell-btn"
-                aria-label="View notifications"
+                className="dash-icon-button"
+                aria-label="View safety alerts and notifications"
+                aria-expanded={isNotificationsOpen}
                 onClick={() => {
                   setIsNotificationsOpen(!isNotificationsOpen)
                   setIsProfileMenuOpen(false)
                 }}
-                id="dash-bell-button"
+                id="dash-notifications-button"
               >
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
-                {alerts.length > 0 && <span className="dash-bell-dot" />}
+                {selectedDestination.alerts.length > 0 && <span className="notification-badge-dot" />}
               </button>
 
               {/* Notification Dropdown Panel */}
               {isNotificationsOpen && (
-                <div className="dash-dropdown-panel dash-notifications-panel" id="dash-notifications-panel">
+                <div className="dash-dropdown-panel dash-notifications-panel" id="dash-notifications-dropdown">
                   <div className="dropdown-panel-header">
-                    <h4>Notifications</h4>
-                    <span className="badge-count">{alerts.length} new</span>
+                    <h4>Safety Advisories ({selectedDestination.name})</h4>
+                    <span className="notif-count-pill">{selectedDestination.alerts.length} Active</span>
                   </div>
-                  <ul className="dash-notification-list">
-                    <li className="notification-item notification-warning">
-                      <div className="notif-indicator" />
-                      <div className="notif-body">
-                        <p className="notif-text">⚠️ <strong>Weather Alert:</strong> High surf advisory near Uluwatu beach.</p>
-                        <span className="notif-time">25m ago</span>
-                      </div>
-                    </li>
-                    <li className="notification-item notification-info">
-                      <div className="notif-indicator" />
-                      <div className="notif-body">
-                        <p className="notif-text">🛡️ <strong>Safe Zone:</strong> You entered a verified Tourist Safety Perimeter in Kuta.</p>
-                        <span className="notif-time">1h ago</span>
-                      </div>
-                    </li>
-                    <li className="notification-item">
-                      <div className="notif-indicator" />
-                      <div className="notif-body">
-                        <p className="notif-text">📅 <strong>Check-in Reminder:</strong> Next scheduled journey check-in is in 48 hours.</p>
-                        <span className="notif-time">3h ago</span>
-                      </div>
-                    </li>
+                  <ul className="notifications-list">
+                    {selectedDestination.alerts.map((al) => (
+                      <li key={al.id} className="notification-item">
+                        <div className="notif-indicator" />
+                        <div className="notif-body">
+                          <p className="notif-text">
+                            <strong>{al.category}:</strong> {al.title}
+                          </p>
+                          <span className="notif-time">{al.time} • Sample Advisory</span>
+                        </div>
+                      </li>
+                    ))}
                   </ul>
                   <div className="dropdown-panel-footer">
                     <button
@@ -623,7 +645,7 @@ export default function Dashboard() {
                         setActiveModal('alerts')
                       }}
                     >
-                      View all safety alerts →
+                      View all regional safety advisories →
                     </button>
                   </div>
                 </div>
@@ -714,12 +736,56 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Greeting Banner */}
+        {/* Greeting Banner & Active Destination Selector */}
         <section className="dash-greeting-section" aria-labelledby="dash-greeting-title">
-          <h1 id="dash-greeting-title" className="dash-greeting-title">
-            {userLoading ? 'Welcome!' : user?.fullName ? `Welcome, ${user.fullName}!` : 'Welcome!'}
-          </h1>
-          <p className="dash-greeting-subtitle">Stay safe. Explore more.</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h1 id="dash-greeting-title" className="dash-greeting-title">
+                {userLoading ? 'Welcome!' : user?.fullName ? `Welcome, ${user.fullName}!` : 'Welcome!'}
+              </h1>
+              <p className="dash-greeting-subtitle">Stay safe. Explore more.</p>
+            </div>
+
+            {/* Destination Selector Pill */}
+            <div
+              style={{
+                background: '#ffffff',
+                padding: '8px 14px',
+                borderRadius: '12px',
+                border: '1px solid #cbd5e1',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Active Destination:
+              </span>
+              <select
+                id="dash-destination-selector"
+                value={selectedDestination.id}
+                onChange={(e) => setDestination(Number(e.target.value))}
+                style={{
+                  border: '1px solid #94a3b8',
+                  background: '#f8fafc',
+                  color: '#0f172a',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                {supportedDestinations.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    📍 {d.name} ({d.state})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </section>
 
         {/* Active Simulated SOS Banner if triggered */}
@@ -731,7 +797,7 @@ export default function Dashboard() {
                 <p className="sos-banner-heading">🚨 SIMULATED EMERGENCY SOS BROADCAST ACTIVE</p>
                 <p className="sos-banner-text">{sosStatusMessage}</p>
                 <p className="sos-banner-note">
-                  Prototype demonstration: No actual emergency dispatch was placed. Coordinates transmitted: -8.4095° S, 115.1889° E.
+                  Prototype demonstration: Simulated student safety ping. Destination coordinates: {selectedDestination.latitude.toFixed(4)}° N, {selectedDestination.longitude.toFixed(4)}° E.
                 </p>
               </div>
             </div>
@@ -752,6 +818,11 @@ export default function Dashboard() {
             <span>✓</span> {checkInNotice}
           </div>
         )}
+        {copyNotice && (
+          <div className="dash-inline-toast dash-inline-toast--info">
+            <span>ℹ️</span> {copyNotice}
+          </div>
+        )}
 
         {/* ===== UPPER GRID: SOS Card & Current Journey Card ===== */}
         <div className="dash-grid-top">
@@ -770,7 +841,6 @@ export default function Dashboard() {
                 id="dash-sos-primary-btn"
               >
                 <div className="sos-inner-content">
-                  {/* Emergency ring / lifebuoy icon matching reference */}
                   <svg className="sos-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <circle cx="12" cy="12" r="4" />
@@ -787,7 +857,7 @@ export default function Dashboard() {
             <p className="sos-callout-text">Tap for Emergency Help</p>
           </section>
 
-          {/* Card 2: Current Journey Card (Matches reference image) */}
+          {/* Card 2: Current Journey Card */}
           <section className="dash-card dash-card-journey" aria-labelledby="card-journey-heading">
             <h2 id="card-journey-heading" className="card-section-title">
               Current Journey
@@ -802,8 +872,12 @@ export default function Dashboard() {
               </div>
 
               <div className="journey-meta-text">
-                <h3 className="journey-destination">Bali, Indonesia</h3>
-                <p className="journey-checkin-timeline">Check-in in 2 days</p>
+                <h3 className="journey-destination">
+                  {selectedDestination.name}, {selectedDestination.state}
+                </h3>
+                <p className="journey-checkin-timeline">
+                  {activeJourney?.nextCheckIn ? `Next check-in: ${activeJourney.nextCheckIn}` : 'Check-in scheduled'}
+                </p>
               </div>
             </div>
 
@@ -820,9 +894,9 @@ export default function Dashboard() {
           </section>
         </div>
 
-        {/* ===== LOWER GRID: 3 Summary Cards ===== */}
+        {/* ===== LOWER GRID: 4 Summary Cards ===== */}
         <div className="dash-grid-bottom">
-          {/* Summary Card 1: Active Alerts (Matches reference image) */}
+          {/* Summary Card 1: Active Alerts */}
           <div className="dash-card dash-summary-card" id="card-active-alerts">
             <div className="summary-card-header">
               <div className="summary-icon-circle summary-icon-alert">
@@ -833,7 +907,7 @@ export default function Dashboard() {
               <div className="summary-title-group">
                 <h3 className="summary-title">Active Alerts</h3>
                 <p className="summary-subtitle summary-subtitle--alert">
-                  {alerts.length} new alert{alerts.length === 1 ? '' : 's'}
+                  {selectedDestination.alerts.length} Advisory item{selectedDestination.alerts.length === 1 ? '' : 's'}
                 </p>
               </div>
             </div>
@@ -848,7 +922,7 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Summary Card 2: Nearby Safe Places (Matches reference image) */}
+          {/* Summary Card 2: Nearby Safe Places */}
           <div className="dash-card dash-summary-card" id="card-safe-places">
             <div className="summary-card-header">
               <div className="summary-icon-circle summary-icon-places">
@@ -859,7 +933,7 @@ export default function Dashboard() {
               </div>
               <div className="summary-title-group">
                 <h3 className="summary-title">Nearby Safe Places</h3>
-                <p className="summary-subtitle">12 places nearby</p>
+                <p className="summary-subtitle">{selectedDestination.safePlaces.length} verified places</p>
               </div>
             </div>
 
@@ -873,7 +947,7 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Summary Card 3: Emergency Contacts (Matches reference image) */}
+          {/* Summary Card 3: Emergency Contacts */}
           <div className="dash-card dash-summary-card" id="card-emergency-contacts">
             <div className="summary-card-header">
               <div className="summary-icon-circle summary-icon-contacts">
@@ -883,7 +957,9 @@ export default function Dashboard() {
               </div>
               <div className="summary-title-group">
                 <h3 className="summary-title">Emergency Contacts</h3>
-                <p className="summary-subtitle">{contacts.length} contacts</p>
+                <p className="summary-subtitle">
+                  1 Official + {userContacts.length} Personal
+                </p>
               </div>
             </div>
 
@@ -919,7 +995,7 @@ export default function Dashboard() {
               </div>
               <div className="summary-title-group">
                 <h3 className="summary-title">Geofencing Safety</h3>
-                <p className="summary-subtitle">View safety zones and check nearby risk alerts.</p>
+                <p className="summary-subtitle">Perimeter around {selectedDestination.name}</p>
               </div>
             </div>
 
@@ -942,7 +1018,7 @@ export default function Dashboard() {
       {/* ===================== MODAL DIALOGS ===================== */}
       {/* ========================================================= */}
 
-      {/* 1. SOS EMERGENCY ASSISTANCE MODAL (Matches reference image) */}
+      {/* 1. SOS EMERGENCY ASSISTANCE MODAL */}
       {showSosConfirmModal && (
         <div className="dash-modal-backdrop" onClick={() => setShowSosConfirmModal(false)}>
           <div
@@ -972,7 +1048,6 @@ export default function Dashboard() {
 
             {/* 5 Emergency Option Cards */}
             <div className="sos-options-grid" role="radiogroup" aria-label="Emergency options">
-              {/* 1. Medical */}
               <button
                 type="button"
                 className={`sos-option-card ${selectedSosType === 'medical' ? 'selected-medical' : ''}`}
@@ -991,7 +1066,6 @@ export default function Dashboard() {
                 <span className="sos-option-label">Medical</span>
               </button>
 
-              {/* 2. Harassment */}
               <button
                 type="button"
                 className={`sos-option-card ${selectedSosType === 'harassment' ? 'selected-harassment' : ''}`}
@@ -1010,7 +1084,6 @@ export default function Dashboard() {
                 <span className="sos-option-label">Harassment</span>
               </button>
 
-              {/* 3. Lost */}
               <button
                 type="button"
                 className={`sos-option-card ${selectedSosType === 'lost' ? 'selected-lost' : ''}`}
@@ -1027,7 +1100,6 @@ export default function Dashboard() {
                 <span className="sos-option-label">Lost</span>
               </button>
 
-              {/* 4. Accident */}
               <button
                 type="button"
                 className={`sos-option-card ${selectedSosType === 'accident' ? 'selected-accident' : ''}`}
@@ -1045,7 +1117,6 @@ export default function Dashboard() {
                 <span className="sos-option-label">Accident</span>
               </button>
 
-              {/* 5. Other */}
               <button
                 type="button"
                 className={`sos-option-card ${selectedSosType === 'other' ? 'selected-other' : ''}`}
@@ -1065,101 +1136,32 @@ export default function Dashboard() {
 
             {/* Lower Dual Section: Location Info (Left) & Mini Map (Right) */}
             <div className="sos-lower-grid">
-              {/* Left Box: Your Location */}
               <div className="sos-location-card">
                 <div className="sos-location-header">
-                  <span className="sos-location-title">Your Location</span>
-                  <span className="sos-gps-fixed" title="Location detected">
-                    ● Live
+                  <span className="sos-location-title">Selected Destination</span>
+                  <span className="sos-gps-fixed" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                    ● Planned Destination
                   </span>
                 </div>
 
                 <div className="sos-location-body">
-                  <p className="sos-location-text">Seminyak, Bali, Indonesia</p>
-                  <p className="sos-location-coords">-8.4095° S, 115.1889° E</p>
+                  <p className="sos-location-text">{selectedDestination.name}, {selectedDestination.state}</p>
+                  <p className="sos-location-coords">
+                    📍 {selectedDestination.latitude.toFixed(4)}° N, {selectedDestination.longitude.toFixed(4)}° E
+                  </p>
                 </div>
 
                 <div className="sos-responders-badge">
                   <span className="sos-responders-icon">🛡️</span>
                   <div>
-                    <div className="sos-responders-label">Target Responders:</div>
-                    <div className="sos-responders-val">Bali Tourist Police & 3 Saved Contacts</div>
+                    <div className="sos-responders-label">Emergency Helpline:</div>
+                    <div className="sos-responders-val">112 & {selectedDestination.localPolice.name}</div>
                   </div>
                 </div>
               </div>
 
-              {/* Right Box: Geofenced Map Illustration */}
-              <div className="sos-map-card">
-                <svg
-                  className="sos-map-svg"
-                  viewBox="0 0 320 180"
-                  preserveAspectRatio="xMidYMid slice"
-                  aria-label="Geofenced safe zone map"
-                >
-                  <defs>
-                    <linearGradient id="waterGradDash" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#bae6fd" />
-                      <stop offset="100%" stopColor="#7dd3fc" />
-                    </linearGradient>
-                  </defs>
-
-                  <rect width="320" height="180" fill="#e8f5e9" />
-                  <path
-                    d="M-10,130 Q40,110 90,140 T180,110 T260,130 T330,80 L330,-10 L-10,-10 Z"
-                    fill="url(#waterGradDash)"
-                    opacity="0.85"
-                  />
-                  <path
-                    d="M-10,30 Q80,70 140,40 T280,20 L330,0 L-10,0 Z"
-                    fill="#93c5fd"
-                    opacity="0.6"
-                  />
-                  <path d="M10,80 Q40,60 70,85 T110,120 L20,150 Z" fill="#c8e6c9" />
-                  <path d="M220,120 Q260,100 300,130 L320,180 L200,180 Z" fill="#dcfce7" />
-
-                  {/* Road Network Lines */}
-                  <g stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.95">
-                    <line x1="20" y1="160" x2="300" y2="20" />
-                    <line x1="120" y1="180" x2="200" y2="0" />
-                    <line x1="0" y1="80" x2="240" y2="160" />
-                    <line x1="180" y1="140" x2="310" y2="100" />
-                    <line x1="60" y1="20" x2="180" y2="110" />
-                  </g>
-                  <g stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.7">
-                    <line x1="20" y1="160" x2="300" y2="20" />
-                    <line x1="120" y1="180" x2="200" y2="0" />
-                    <line x1="0" y1="80" x2="240" y2="160" />
-                    <line x1="180" y1="140" x2="310" y2="100" />
-                    <line x1="60" y1="20" x2="180" y2="110" />
-                  </g>
-
-                  {/* Geofence Blue Polygon */}
-                  <polygon
-                    points="60,135 110,40 240,60 250,140 180,130 160,170"
-                    fill="rgba(37, 99, 235, 0.08)"
-                    stroke="#2563eb"
-                    strokeWidth="2.4"
-                    strokeLinejoin="round"
-                  />
-                  <circle cx="60" cy="135" r="3" fill="#2563eb" />
-                  <circle cx="110" cy="40" r="3" fill="#2563eb" />
-                  <circle cx="240" cy="60" r="3" fill="#2563eb" />
-                  <circle cx="250" cy="140" r="3" fill="#2563eb" />
-
-                  {/* Centered Location Marker Pin */}
-                  <g transform="translate(160, 110)">
-                    <circle cx="0" cy="-6" r="14" fill="#2563eb" opacity="0.15">
-                      <animate attributeName="r" values="8;18;8" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="0.25;0.05;0.25" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
-                    <ellipse cx="0" cy="5" rx="5" ry="2" fill="rgba(0,0,0,0.3)" />
-                    <path
-                      d="M0,4 C-4,0 -7,-3 -7,-8 C-7,-12 -3.8,-15 0,-15 C3.8,-15 7,-12 7,-8 C7,-3 4,0 0,4 Z"
-                      fill="#0f172a"
-                    />
-                    <circle cx="0" cy="-8" r="2.5" fill="#ffffff" />
-                  </g>
-                </svg>
+              <div className="sos-map-card" style={{ padding: '6px' }}>
+                <DestinationMap destination={selectedDestination} height="160px" zoom={12} />
               </div>
             </div>
 
@@ -1180,7 +1182,7 @@ export default function Dashboard() {
                 onClick={() => handleConfirmSos(selectedSosType)}
                 id="dash-sos-modal-send-btn"
               >
-                Send SOS
+                Simulate SOS Alert
               </button>
             </div>
           </div>
@@ -1194,7 +1196,7 @@ export default function Dashboard() {
             <div className="modal-header">
               <div>
                 <h3 className="modal-title">Current Journey Itinerary</h3>
-                <p className="modal-subtitle">Bali Safety Tracking & Support Details</p>
+                <p className="modal-subtitle">{selectedDestination.name} Safety Tracking</p>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
                 ✕
@@ -1206,26 +1208,26 @@ export default function Dashboard() {
                 <div className="jms-destination-badge">
                   <span className="jms-pin">📍</span>
                   <div>
-                    <h4>Bali, Indonesia (Denpasar & Ubud)</h4>
-                    <p>Status: Active Safe Journey • Low Risk Zone</p>
+                    <h4>{selectedDestination.name}, {selectedDestination.state}</h4>
+                    <p>Coordinates: {selectedDestination.latitude.toFixed(4)}° N, {selectedDestination.longitude.toFixed(4)}° E</p>
                   </div>
                 </div>
 
                 <div className="jms-grid">
                   <div className="jms-stat">
-                    <span className="stat-label">Safety Rating</span>
-                    <span className="stat-val stat-val--high">9.6 / 10</span>
+                    <span className="stat-label">Safety Status</span>
+                    <span className="stat-val stat-val--high">Active Monitor</span>
                   </div>
                   <div className="jms-stat">
                     <span className="stat-label">Scheduled Stay</span>
-                    <span className="stat-val">Oct 12 – Oct 22, 2026</span>
+                    <span className="stat-val">{activeJourney?.startDate || 'Oct 10, 2026'} – {activeJourney?.expectedArrival || 'Oct 16, 2026'}</span>
                   </div>
                   <div className="jms-stat">
                     <span className="stat-label">Next Check-In</span>
-                    <span className="stat-val">In 2 days</span>
+                    <span className="stat-val">{activeJourney?.nextCheckIn || 'In 2 hours'}</span>
                   </div>
                   <div className="jms-stat">
-                    <span className="stat-label">Local Helpline</span>
+                    <span className="stat-label">National Helpline</span>
                     <span className="stat-val">112 (Universal)</span>
                   </div>
                 </div>
@@ -1247,29 +1249,8 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                <div className="jms-itinerary-list">
-                  <h5>Planned Safety Waypoints:</h5>
-                  <div className="waypoint-item">
-                    <span className="waypoint-dot waypoint-dot--done">✓</span>
-                    <div>
-                      <p className="waypoint-title">Denpasar International Airport (DPS)</p>
-                      <span className="waypoint-date">Arrived Oct 12, 14:30 • Verified</span>
-                    </div>
-                  </div>
-                  <div className="waypoint-item">
-                    <span className="waypoint-dot waypoint-dot--active">●</span>
-                    <div>
-                      <p className="waypoint-title">Grand Hyatt Nusa Dua Resort</p>
-                      <span className="waypoint-date">Current Base • Verified Safe Hotel</span>
-                    </div>
-                  </div>
-                  <div className="waypoint-item">
-                    <span className="waypoint-dot">○</span>
-                    <div>
-                      <p className="waypoint-title">Ubud Cultural Center Day Excursion</p>
-                      <span className="waypoint-date">Scheduled Oct 18 • Tourist police zone</span>
-                    </div>
-                  </div>
+                <div style={{ marginTop: '16px' }}>
+                  <DestinationMap destination={selectedDestination} height="200px" />
                 </div>
               </div>
             </div>
@@ -1289,8 +1270,8 @@ export default function Dashboard() {
           <div className="dash-modal dash-modal-large" onClick={(e) => e.stopPropagation()} role="dialog">
             <div className="modal-header">
               <div>
-                <h3 className="modal-title">Nearby Safe Places & Assistance Centers</h3>
-                <p className="modal-subtitle">Showing verified safe shelters, hospitals, police, and consulates near Bali</p>
+                <h3 className="modal-title">Nearby Safe Places Around {selectedDestination.name}</h3>
+                <p className="modal-subtitle">Showing verified safe shelters, hospitals, and police near {selectedDestination.name}, {selectedDestination.state}</p>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
                 ✕
@@ -1298,40 +1279,14 @@ export default function Dashboard() {
             </div>
 
             <div className="modal-body">
-              {/* Map Placeholder Graphic */}
-              <div className="mock-map-container">
-                <div className="mock-map-bg">
-                  <div className="map-road-1" />
-                  <div className="map-road-2" />
-                  <div className="map-coastline" />
-                  <div className="map-ocean-label">INDIAN OCEAN</div>
-
-                  {/* Pins on map */}
-                  <div className="map-pin map-pin-user" style={{ top: '48%', left: '44%' }}>
-                    <span className="map-pin-pulse" />
-                    <span className="map-pin-icon">📍 You</span>
-                  </div>
-
-                  <div className="map-pin map-pin-hospital" style={{ top: '35%', left: '38%' }} title="BIMC Hospital">
-                    🏥 Hospital (1.2 km)
-                  </div>
-
-                  <div className="map-pin map-pin-police" style={{ top: '55%', left: '60%' }} title="Police Station">
-                    👮 Police (2.8 km)
-                  </div>
-
-                  <div className="map-pin map-pin-embassy" style={{ top: '25%', left: '55%' }} title="Consulate">
-                    🏛️ Consulate (4.5 km)
-                  </div>
-                </div>
-                <div className="mock-map-overlay-info">
-                  <span>Interactive Map Preview (Simulated GPS: Denpasar Area)</span>
-                </div>
+              {/* Interactive Leaflet Map for Destination */}
+              <div style={{ marginBottom: '16px' }}>
+                <DestinationMap destination={selectedDestination} places={filteredSafePlaces} height="260px" />
               </div>
 
               {/* Category Filter Tabs */}
               <div className="safe-places-tabs">
-                {(['All', 'Hospital', 'Police', 'Embassy', 'Tourist Center'] as const).map((cat) => (
+                {(['All', 'Police', 'Hospital', 'Tourist Center'] as const).map((cat) => (
                   <button
                     key={cat}
                     type="button"
@@ -1345,32 +1300,40 @@ export default function Dashboard() {
 
               {/* List of Places */}
               <div className="safe-places-list">
-                {filteredSafePlaces.map((sp) => (
-                  <div key={sp.id} className="safe-place-card">
-                    <div className="sp-card-left">
-                      <div className="sp-cat-icon">
-                        {sp.category === 'Hospital' && '🏥'}
-                        {sp.category === 'Police' && '👮'}
-                        {sp.category === 'Embassy' && '🏛️'}
-                        {sp.category === 'Tourist Center' && 'ℹ️'}
-                      </div>
-                      <div>
-                        <h4 className="sp-name">{sp.name}</h4>
-                        <p className="sp-address">{sp.address}</p>
-                        <div className="sp-meta-tags">
-                          <span className="sp-tag sp-tag-cat">{sp.category}</span>
-                          <span className="sp-tag sp-tag-dist">{sp.distance} away</span>
-                          {sp.isOpen247 && <span className="sp-tag sp-tag-open">24/7 Open</span>}
+                {filteredSafePlaces.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                    No verified safe places under this category for {selectedDestination.name}.
+                  </div>
+                ) : (
+                  filteredSafePlaces.map((sp) => (
+                    <div key={sp.id} className="safe-place-card">
+                      <div className="sp-card-left">
+                        <div className="sp-cat-icon">
+                          {sp.category === 'Hospital' && '🏥'}
+                          {sp.category === 'Police' && '👮'}
+                          {sp.category === 'Tourist Center' && 'ℹ️'}
+                        </div>
+                        <div>
+                          <h4 className="sp-name">{sp.name}</h4>
+                          <p className="sp-address">{sp.address}</p>
+                          <div className="sp-meta-tags">
+                            <span className="sp-tag sp-tag-cat">{sp.category}</span>
+                            <span className="sp-tag sp-tag-dist">{sp.distance} away</span>
+                            {sp.isOpen247 && <span className="sp-tag sp-tag-open">24/7 Open</span>}
+                            <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                              ✓ {sp.verifiedSource}
+                            </span>
+                          </div>
                         </div>
                       </div>
+                      <div className="sp-card-right">
+                        <a href={`tel:${sp.phone.replace(/[^0-9+]/g, '')}`} className="btn-sp-call">
+                          📞 {sp.phone}
+                        </a>
+                      </div>
                     </div>
-                    <div className="sp-card-right">
-                      <a href={`tel:${sp.phone.replace(/[^0-9+]/g, '')}`} className="btn-sp-call">
-                        📞 {sp.phone}
-                      </a>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
@@ -1389,8 +1352,8 @@ export default function Dashboard() {
           <div className="dash-modal" onClick={(e) => e.stopPropagation()} role="dialog">
             <div className="modal-header">
               <div>
-                <h3 className="modal-title">Regional Safety Alerts</h3>
-                <p className="modal-subtitle">Real-time advisory feed for Bali & nearby tourist zones</p>
+                <h3 className="modal-title">Regional Safety Alerts – {selectedDestination.name}</h3>
+                <p className="modal-subtitle">Advisory categories and safety notices for {selectedDestination.name}, {selectedDestination.state}</p>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
                 ✕
@@ -1399,24 +1362,36 @@ export default function Dashboard() {
 
             <div className="modal-body">
               <div className="alerts-full-list">
-                {alerts.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`alert-full-card alert-full-card--${item.level.toLowerCase()}`}
-                  >
-                    <div className="alert-card-head">
-                      <div className="alert-tag-group">
-                        <span className={`alert-badge alert-badge--${item.level.toLowerCase()}`}>
-                          {item.level} Priority
-                        </span>
-                        <span className="alert-cat-badge">{item.category}</span>
-                      </div>
-                      <span className="alert-time-text">{item.time}</span>
-                    </div>
-                    <h4 className="alert-headline">{item.title}</h4>
-                    <p className="alert-details-text">{item.description}</p>
+                {selectedDestination.alerts.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                    No active warnings or advisories for {selectedDestination.name}.
                   </div>
-                ))}
+                ) : (
+                  selectedDestination.alerts.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`alert-full-card alert-full-card--${item.level.toLowerCase()}`}
+                    >
+                      <div className="alert-card-head">
+                        <div className="alert-tag-group">
+                          <span className={`alert-badge alert-badge--${item.level.toLowerCase()}`}>
+                            {item.level} Priority
+                          </span>
+                          <span className="alert-cat-badge">{item.category}</span>
+                          <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                            Sample Advisory
+                          </span>
+                        </div>
+                        <span className="alert-time-text">{item.time}</span>
+                      </div>
+                      <h4 className="alert-headline">{item.title}</h4>
+                      <p className="alert-details-text">{item.description}</p>
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
+                        📍 <strong>Affected Perimeter:</strong> {item.affectedArea}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -1435,8 +1410,8 @@ export default function Dashboard() {
           <div className="dash-modal" onClick={(e) => e.stopPropagation()} role="dialog">
             <div className="modal-header">
               <div>
-                <h3 className="modal-title">Saved Emergency Contacts</h3>
-                <p className="modal-subtitle">These contacts are alerted when SOS is triggered</p>
+                <h3 className="modal-title">Emergency Contacts</h3>
+                <p className="modal-subtitle">Official emergency services & your personal trusted contacts</p>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
                 ✕
@@ -1449,40 +1424,125 @@ export default function Dashboard() {
                   <span>✓</span> {contactNotice}
                 </div>
               )}
+              {contactsError && (
+                <div className="dash-inline-toast dash-inline-toast--error" style={{ background: '#fee2e2', color: '#991b1b' }}>
+                  <span>⚠️</span> {contactsError}
+                </div>
+              )}
 
-              <div className="contacts-list">
-                {contacts.map((c) => (
-                  <div key={c.id} className="contact-item-card">
-                    <div className="contact-item-avatar">
-                      {c.name.charAt(0)}
+              {/* Slot 1: Official National 112 & Local Police Contact */}
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  1. Official Emergency Helplines
+                </h4>
+                <div className="contacts-list">
+                  {/* National 112 */}
+                  <div className="contact-item-card" style={{ borderLeft: '4px solid #dc2626' }}>
+                    <div className="contact-item-avatar" style={{ background: '#fee2e2', color: '#dc2626' }}>
+                      🚨
                     </div>
                     <div className="contact-item-info">
                       <div className="contact-name-row">
-                        <h4 className="contact-name">{c.name}</h4>
-                        {c.isPrimary && <span className="primary-pill">Primary Contact</span>}
+                        <h4 className="contact-name">Police / Emergency Helpline</h4>
+                        <span className="primary-pill" style={{ background: '#dc2626', color: '#ffffff' }}>
+                          National 24/7
+                        </span>
                       </div>
-                      <p className="contact-relation">{c.relationship}</p>
-                      <p className="contact-phone">📞 {c.phone}</p>
+                      <p className="contact-relation">India's unified emergency number</p>
+                      <p className="contact-phone">
+                        📞 <a href="tel:112" style={{ color: '#dc2626', fontWeight: 700, textDecoration: 'none' }}>112</a>
+                      </p>
                     </div>
                     <div className="contact-item-actions">
-                      <button
-                        type="button"
-                        className="btn-test-alert"
-                        onClick={() => {
-                          setContactNotice(`Simulated test SMS ping sent to ${c.name} (${c.phone}).`)
-                          setTimeout(() => setContactNotice(null), 3000)
-                        }}
-                      >
-                        Test Ping
-                      </button>
+                      <a href="tel:112" className="btn-test-alert" style={{ background: '#dc2626', color: '#ffffff', textDecoration: 'none' }}>
+                        Call 112
+                      </a>
                     </div>
                   </div>
-                ))}
+
+                  {/* Destination Police Station */}
+                  <div className="contact-item-card" style={{ borderLeft: '4px solid #2563eb' }}>
+                    <div className="contact-item-avatar" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                      👮
+                    </div>
+                    <div className="contact-item-info">
+                      <div className="contact-name-row">
+                        <h4 className="contact-name">{selectedDestination.localPolice.name}</h4>
+                        <span className="primary-pill">Local Jurisdiction</span>
+                      </div>
+                      <p className="contact-relation">Official local police station for {selectedDestination.name}</p>
+                      <p className="contact-phone">
+                        📞 <a href={`tel:${selectedDestination.localPolice.phone.replace(/[^0-9+]/g, '')}`} style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}>
+                          {selectedDestination.localPolice.phone}
+                        </a>
+                      </p>
+                    </div>
+                    <div className="contact-item-actions">
+                      <a
+                        href={`tel:${selectedDestination.localPolice.phone.replace(/[^0-9+]/g, '')}`}
+                        className="btn-test-alert"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        Call Station
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Add new contact form */}
-              <form className="add-contact-form" onSubmit={handleAddContact}>
-                <h4 className="add-contact-title">+ Add New Emergency Contact</h4>
+              {/* Slots 2 & 3+: User-Managed Personal Emergency Contacts */}
+              <div style={{ marginTop: '20px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  2. Personal Emergency Contacts ({userContacts.length})
+                </h4>
+
+                {contactsLoading ? (
+                  <div style={{ padding: '16px', textAlign: 'center', color: '#64748b' }}>
+                    Loading personal contacts…
+                  </div>
+                ) : userContacts.length === 0 ? (
+                  <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                    No personal emergency contacts added. Add family members or friends below to notify them in emergencies.
+                  </div>
+                ) : (
+                  <div className="contacts-list">
+                    {userContacts.map((c) => (
+                      <div key={c.id} className="contact-item-card">
+                        <div className="contact-item-avatar">
+                          {c.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="contact-item-info">
+                          <div className="contact-name-row">
+                            <h4 className="contact-name">{c.name}</h4>
+                            {c.isPrimary && <span className="primary-pill">Primary Contact</span>}
+                          </div>
+                          <p className="contact-relation">{c.relationship}</p>
+                          <p className="contact-phone">
+                            <a href={`tel:${c.phone.replace(/[^0-9+]/g, '')}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                              📞 {c.phone}
+                            </a>
+                          </p>
+                        </div>
+                        <div className="contact-item-actions">
+                          <button
+                            type="button"
+                            className="btn-test-alert"
+                            style={{ background: '#fee2e2', color: '#dc2626', borderColor: '#fca5a5' }}
+                            onClick={() => handleDeleteContact(c.id)}
+                            title="Delete personal contact"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add new personal contact form */}
+              <form className="add-contact-form" onSubmit={handleAddContact} style={{ marginTop: '20px' }}>
+                <h4 className="add-contact-title">+ Add New Personal Emergency Contact</h4>
                 <div className="form-grid-3">
                   <input
                     type="text"
@@ -1494,7 +1554,7 @@ export default function Dashboard() {
                   />
                   <input
                     type="tel"
-                    placeholder="Phone Number"
+                    placeholder="Phone (e.g. +91 9876543210)"
                     className="dash-input"
                     value={newContactPhone}
                     onChange={(e) => setNewContactPhone(e.target.value)}
@@ -1502,14 +1562,15 @@ export default function Dashboard() {
                   />
                   <input
                     type="text"
-                    placeholder="Relationship (e.g. Parent)"
+                    placeholder="Relationship (e.g. Spouse / Parent)"
                     className="dash-input"
                     value={newContactRelation}
                     onChange={(e) => setNewContactRelation(e.target.value)}
+                    required
                   />
                 </div>
-                <button type="submit" className="btn-dash-accent-small">
-                  Save Contact
+                <button type="submit" className="btn-dash-accent-small" style={{ marginTop: '8px' }}>
+                  Save Personal Contact
                 </button>
               </form>
             </div>
@@ -1530,7 +1591,7 @@ export default function Dashboard() {
             <div className="modal-header">
               <div>
                 <h3 className="modal-title">File an Incident or Assistance Report</h3>
-                <p className="modal-subtitle">Submit a non-emergency report to local tourist authorities</p>
+                <p className="modal-subtitle">Prefilled for {selectedDestination.name} • Submit to tourist safety desk</p>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
                 ✕
@@ -1538,12 +1599,18 @@ export default function Dashboard() {
             </div>
 
             <div className="modal-body">
+              {incidentNotice && (
+                <div className="dash-inline-toast dash-inline-toast--error" style={{ background: '#fee2e2', color: '#991b1b', marginBottom: '12px' }}>
+                  <span>⚠️</span> {incidentNotice}
+                </div>
+              )}
+
               {incidentSubmitted ? (
                 <div className="report-success-state">
                   <span className="success-icon-big">✓</span>
-                  <h4>Report Submitted (Demo Simulation)</h4>
+                  <h4>Report Submitted Successfully</h4>
                   <p>
-                    Reference ticket #TR-88219 has been generated. Tourist Assistance Desk in Bali has received your report.
+                    Your report for <strong>{selectedDestination.name}</strong> has been logged to your account.
                   </p>
                 </div>
               ) : (
@@ -1561,7 +1628,9 @@ export default function Dashboard() {
                     <option value="Harassment">Harassment or Safety Concern</option>
                   </select>
 
-                  <label className="form-field-label">Location / Area</label>
+                  <label className="form-field-label">
+                    Incident Location / Landmark (defaults to selected destination)
+                  </label>
                   <input
                     type="text"
                     className="dash-input"
@@ -1574,7 +1643,7 @@ export default function Dashboard() {
                   <textarea
                     className="dash-textarea"
                     rows={4}
-                    placeholder="Describe what occurred, persons involved, or assistance needed..."
+                    placeholder="Describe what occurred, exact location/landmark, or assistance needed..."
                     value={incidentDetails}
                     onChange={(e) => setIncidentDetails(e.target.value)}
                     required
@@ -1584,6 +1653,42 @@ export default function Dashboard() {
                     Submit Incident Report
                   </button>
                 </form>
+              )}
+
+              {/* Previously Submitted Incident Reports */}
+              {userIncidents.length > 0 && (
+                <div style={{ marginTop: '24px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>
+                    Your Submitted Reports ({userIncidents.length})
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {userIncidents.map((rep) => (
+                      <div
+                        key={rep.id}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <strong style={{ color: '#0f172a' }}>{rep.incidentType}</strong>
+                          <span style={{ padding: '2px 6px', borderRadius: '4px', background: '#dbeafe', color: '#1e40af', fontSize: '10px', fontWeight: 600 }}>
+                            {rep.status}
+                          </span>
+                        </div>
+                        <div style={{ color: '#475569', marginTop: '2px' }}>
+                          📍 {rep.location} {rep.destinationName ? `(${rep.destinationName})` : ''}
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>
+                          Ref: {rep.referenceNumber}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -1599,11 +1704,31 @@ export default function Dashboard() {
       {/* 7. OFFLINE SAFETY KIT MODAL */}
       {activeModal === 'offline' && (
         <div className="dash-modal-backdrop" onClick={() => setActiveModal(null)}>
-          <div className="dash-modal" onClick={(e) => e.stopPropagation()} role="dialog">
+          <div className="dash-modal dash-modal-large" onClick={(e) => e.stopPropagation()} role="dialog">
             <div className="modal-header">
-              <div>
-                <h3 className="modal-title">Offline Travel Safety Kit</h3>
-                <p className="modal-subtitle">Essential details saved to your device cache for zero-network situations</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: '24px' }}>
+                <div>
+                  <h3 className="modal-title">Offline Travel Safety Kit</h3>
+                  <p className="modal-subtitle">
+                    Guidance for {selectedDestination.name} & India Emergency Resources
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCacheOfflineKit}
+                  style={{
+                    background: offlineCached ? '#16a34a' : '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {offlineCached ? '✓ Cached for Offline' : '💾 Cache for Offline'}
+                </button>
               </div>
               <button type="button" className="modal-close-btn" onClick={() => setActiveModal(null)}>
                 ✕
@@ -1612,26 +1737,105 @@ export default function Dashboard() {
 
             <div className="modal-body">
               <div className="offline-kit-grid">
+                {/* 1. Universal Emergency Numbers (India) */}
                 <div className="offline-item-card">
-                  <h4>📞 Universal Emergency Numbers (Indonesia)</h4>
-                  <ul>
-                    <li><strong>Police:</strong> 110</li>
-                    <li><strong>Ambulance / Medical:</strong> 118</li>
-                    <li><strong>Search & Rescue (BASARNAS):</strong> 115</li>
-                    <li><strong>Tourist Police Hotline:</strong> +62 361 224 111</li>
-                    <li><strong>General Emergency:</strong> 112</li>
+                  <h4>📞 Universal Emergency Numbers (India)</h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {UNIVERSAL_EMERGENCY_NUMBERS.map((u) => (
+                      <li key={u.number} style={{ fontSize: '13px', lineHeight: 1.4 }}>
+                        <strong>{u.service}:</strong>{' '}
+                        <a href={u.telLink} style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
+                          {u.number}
+                        </a>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{u.description}</div>
+                      </li>
+                    ))}
+                    <li style={{ fontSize: '13px', lineHeight: 1.4 }}>
+                      <strong>{selectedDestination.localPolice.name}:</strong>{' '}
+                      <a href={`tel:${selectedDestination.localPolice.phone.replace(/[^0-9+]/g, '')}`} style={{ color: '#2563eb', fontWeight: 700, textDecoration: 'none' }}>
+                        {selectedDestination.localPolice.phone}
+                      </a>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>Local police station for {selectedDestination.name}</div>
+                    </li>
                   </ul>
                 </div>
 
+                {/* 2. Destination-Specific Guidance */}
                 <div className="offline-item-card">
-                  <h4>🗣️ Critical Emergency Phrases (Indonesian)</h4>
-                  <ul>
-                    <li><em>"Tolong!"</em> — Help!</li>
-                    <li><em>"Saya butuh dokter"</em> — I need a doctor</li>
-                    <li><em>"Di mana kantor polisi?"</em> — Where is the police station?</li>
-                    <li><em>"Saya tersesat"</em> — I am lost</li>
-                    <li><em>"Panggil ambulans!"</em> — Call an ambulance!</li>
-                  </ul>
+                  <h4>🛡️ {selectedDestination.name} Safety Guidance</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                    <div>
+                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Beach / Coastal Safety:</strong>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
+                        {selectedDestination.offlineKit.beachOrMountainSafety}
+                      </p>
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Weather & Terrain Precautions:</strong>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
+                        {selectedDestination.offlineKit.weatherAndMonsoon}
+                      </p>
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Hydration & Sun Safety:</strong>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
+                        {selectedDestination.offlineKit.heatAndHydration}
+                      </p>
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '12px', color: '#1e3a8a' }}>• Local Transit & Crowds:</strong>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>
+                        {selectedDestination.offlineKit.localTransportAdvice}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Critical Emergency Phrases */}
+              <div style={{ marginTop: '20px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>
+                  🗣️ Critical Emergency Phrases (English & Hindi)
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '8px' }}>
+                  {CRITICAL_EMERGENCY_PHRASES.map((ph) => (
+                    <div
+                      key={ph.id}
+                      style={{
+                        background: '#f8fafc',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
+                          {ph.english}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPhrase(ph.hindi)}
+                          style={{
+                            background: '#e2e8f0',
+                            border: 'none',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                          }}
+                          title="Copy Hindi translation"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#2563eb', fontWeight: 600, marginTop: '4px' }}>
+                        {ph.hindi}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>
+                        Pronunciation: "{ph.hindiPronunciation}"
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

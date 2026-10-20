@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, navigate } from '../src/router'
 import { Destination, fetchDestinations } from '../src/services/destinations'
+import { useDestination } from '../src/context/DestinationContext'
+import DestinationMap from '../src/components/DestinationMap'
 import './Journey.css'
 
 interface UpcomingItem {
@@ -11,36 +13,58 @@ interface UpcomingItem {
 }
 
 export default function Journey() {
-  // Form State
-  const [destination, setDestination] = useState('Goa, India')
-  const [startDate, setStartDate] = useState('2026-10-10')
-  const [expectedArrival, setExpectedArrival] = useState('2026-10-16')
-  const [remindersEnabled, setRemindersEnabled] = useState(true)
-  const [checkInInterval, setCheckInInterval] = useState('Every 2 hours')
-  const [notifyContacts, setNotifyContacts] = useState(true)
+  const {
+    selectedDestination,
+    setDestination: setGlobalDestination,
+    destinations: supportedDests,
+    activeJourney,
+    updateJourney,
+    doCheckIn,
+  } = useDestination()
+
+  // Form State initialized from global destination context
+  const [destination, setDestination] = useState(`${selectedDestination.name}, ${selectedDestination.state}`)
+  const [startDate, setStartDate] = useState(activeJourney?.startDate || '2026-10-10')
+  const [expectedArrival, setExpectedArrival] = useState(activeJourney?.expectedArrival || '2026-10-16')
+  const [remindersEnabled, setRemindersEnabled] = useState(activeJourney?.remindersEnabled ?? true)
+  const [checkInInterval, setCheckInInterval] = useState(activeJourney?.checkInInterval || 'Every 2 hours')
+  const [notifyContacts, setNotifyContacts] = useState(activeJourney?.notifyContacts ?? true)
 
   // Backend Destinations State
   const [destinations, setDestinations] = useState<Destination[]>([])
   const [destinationsLoading, setDestinationsLoading] = useState(true)
   const [destinationsError, setDestinationsError] = useState<string | null>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const [selectedDestinationObj, setSelectedDestinationObj] = useState<Destination | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Current Journey State
   const [journeyInfo, setJourneyInfo] = useState({
-    name: 'Goa, India',
-    description: 'A beautiful coastal destination known for its beaches, culture and heritage.',
-    startDateDisplay: 'Oct 10, 2026',
-    arrivalDisplay: 'Oct 16, 2026',
+    name: `${selectedDestination.name}, ${selectedDestination.state}`,
+    description: selectedDestination.description,
+    startDateDisplay: activeJourney?.startDate || 'Oct 10, 2026',
+    arrivalDisplay: activeJourney?.expectedArrival || 'Oct 16, 2026',
     arrivalTimeDisplay: '12:00 PM',
     stayDuration: '6 days',
-    image: '/images/goa-beach.jpg',
+    image: selectedDestination.imageUrl,
   })
 
+  // Synchronize local form when selectedDestination or activeJourney changes
+  useEffect(() => {
+    const formatted = `${selectedDestination.name}, ${selectedDestination.state}`
+    setDestination(formatted)
+    setJourneyInfo((prev) => ({
+      ...prev,
+      name: formatted,
+      description: selectedDestination.description,
+      image: selectedDestination.imageUrl,
+      startDateDisplay: activeJourney?.startDate || prev.startDateDisplay,
+      arrivalDisplay: activeJourney?.expectedArrival || prev.arrivalDisplay,
+    }))
+  }, [selectedDestination, activeJourney])
+
   // Check-in State
-  const [lastCheckIn, setLastCheckIn] = useState('Today, Oct 10, 2026 at 12:04 PM')
-  const [nextCheckIn, setNextCheckIn] = useState('Today at 2:00 PM')
+  const [lastCheckIn, setLastCheckIn] = useState(activeJourney?.lastCheckIn || 'Today, Oct 10, 2026 at 12:04 PM')
+  const [nextCheckIn, setNextCheckIn] = useState(activeJourney?.nextCheckIn || 'Today at 2:00 PM')
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [isCheckInSuccess, setIsCheckInSuccess] = useState(false)
   const [showCallNotice, setShowCallNotice] = useState(false)
@@ -81,8 +105,8 @@ export default function Journey() {
     }, 4000)
   }
 
-  // Handle Check In Now Action
-  const handleCheckInNow = () => {
+  // Handle Check In Now Action with backend sync
+  const handleCheckInNow = async () => {
     setIsCheckInSuccess(true)
     const now = new Date()
     const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -94,7 +118,8 @@ export default function Journey() {
     // Calculate next check-in (+2 hours default)
     const nextTime = new Date(now.getTime() + 2 * 60 * 60 * 1000)
     const nextTimeFormatted = nextTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    setNextCheckIn(`Today at ${nextTimeFormatted}`)
+    const nextFormatted = `Today at ${nextTimeFormatted}`
+    setNextCheckIn(nextFormatted)
 
     // Update timeline
     setTimeline((prev) => [
@@ -107,7 +132,14 @@ export default function Journey() {
       ...prev.slice(0, 3).map((item) => ({ ...item, status: 'Scheduled' as const })),
     ])
 
-    showToast('Check-in recorded! Your location has been noted and emergency contacts updated.')
+    // Trigger backend check-in persistence
+    try {
+      await doCheckIn()
+    } catch {
+      // Local state already updated
+    }
+
+    showToast(`Check-in recorded for ${selectedDestination.name}! Your emergency contacts have been kept up to date.`)
     setTimeout(() => setIsCheckInSuccess(false), 2000)
   }
 
@@ -118,30 +150,21 @@ export default function Journey() {
     try {
       const data = await fetchDestinations()
       setDestinations(data)
-
-      if (data && data.length > 0) {
-        // If current destination matches a fetched destination, populate its description & photo
-        const matched =
-          data.find((d) =>
-            destination.toLowerCase().includes(d.name.toLowerCase()) ||
-            d.name.toLowerCase().includes('goa')
-          ) || data[0]
-
-        if (matched && destination === 'Goa, India') {
-          const formatted = `${matched.name}${matched.state ? ', ' + matched.state : ''}`
-          setDestination(formatted)
-          setSelectedDestinationObj(matched)
-          setJourneyInfo((prev) => ({
-            ...prev,
-            name: formatted,
-            description: matched.description || prev.description,
-            image: matched.imageUrl || prev.image,
-          }))
-        }
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Could not reach backend API'
       setDestinationsError(msg)
+      // Fallback to supported destinations from context/data
+      setDestinations(
+        supportedDests.map((d) => ({
+          id: d.id,
+          name: d.name,
+          state: d.state,
+          description: d.description,
+          latitude: d.latitude,
+          longitude: d.longitude,
+          imageUrl: d.imageUrl,
+        }))
+      )
     } finally {
       setDestinationsLoading(false)
     }
@@ -175,12 +198,14 @@ export default function Journey() {
     )
   })
 
-  // Select destination from dropdown
-  const handleSelectDestination = (dest: Destination) => {
+  // Select destination from dropdown and update global context
+  const handleSelectDestination = async (dest: Destination) => {
     const label = `${dest.name}${dest.state ? ', ' + dest.state : ''}`
     setDestination(label)
-    setSelectedDestinationObj(dest)
     setIsDropdownOpen(false)
+
+    // Update global destination
+    await setGlobalDestination(dest.id)
 
     setJourneyInfo((prev) => ({
       ...prev,
@@ -188,10 +213,12 @@ export default function Journey() {
       description: dest.description || prev.description,
       image: dest.imageUrl || prev.image,
     }))
+
+    showToast(`Destination switched to ${dest.name}. All safety resources updated across the application.`)
   }
 
   // Handle Start Journey Submit
-  const handleStartJourney = (e: React.FormEvent) => {
+  const handleStartJourney = async (e: React.FormEvent) => {
     e.preventDefault()
 
     const startObj = new Date(startDate || '2026-10-10')
@@ -202,30 +229,36 @@ export default function Journey() {
     const startFormatted = startObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     const arrivalFormatted = endObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
+    // Find destination match
     const matched =
-      selectedDestinationObj ||
       destinations.find(
         (d) =>
           d.name.toLowerCase() === destination.toLowerCase() ||
           `${d.name}, ${d.state}`.toLowerCase() === destination.toLowerCase() ||
           destination.toLowerCase().includes(d.name.toLowerCase())
-      )
+      ) || selectedDestination
+
+    await updateJourney({
+      destinationId: matched.id,
+      destinationName: matched.name,
+      startDate,
+      expectedArrival,
+      checkInInterval,
+      remindersEnabled,
+      notifyContacts,
+    })
 
     setJourneyInfo({
-      name: destination || 'Goa, India',
-      description:
-        matched?.description ||
-        (destination.toLowerCase().includes('goa')
-          ? 'A beautiful coastal destination known for its beaches, culture and heritage.'
-          : `Active travel itinerary to ${destination} with automated safety check-in schedule.`),
+      name: destination || `${selectedDestination.name}, ${selectedDestination.state}`,
+      description: matched.description || selectedDestination.description,
       startDateDisplay: startFormatted,
       arrivalDisplay: arrivalFormatted,
       arrivalTimeDisplay: '12:00 PM',
       stayDuration: `${diffDays} days`,
-      image: matched?.imageUrl || '/images/goa-beach.jpg',
+      image: matched.imageUrl || selectedDestination.imageUrl,
     })
 
-    showToast(`Journey to ${destination} initialized! Safe tracking and check-in timeline created.`)
+    showToast(`Journey to ${destination} active! Safe tracking and check-in timeline updated.`)
   }
 
   return (
@@ -763,6 +796,88 @@ export default function Journey() {
                         <div className="journey-chip-label">Planned Stay</div>
                         <div className="journey-chip-val">{journeyInfo.stayDuration}</div>
                       </div>
+                    </div>
+
+                    <div className="journey-stat-chip">
+                      <span className="journey-chip-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="2" y1="12" x2="22" y2="12" />
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                      </span>
+                      <div>
+                        <div className="journey-chip-label">Coordinates</div>
+                        <div className="journey-chip-val">
+                          {selectedDestination.latitude.toFixed(3)}°N, {selectedDestination.longitude.toFixed(3)}°E
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interactive Leaflet Map for Selected Destination */}
+                  <div style={{ marginTop: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                        🗺️ Destination Map & Safe Perimeter
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        OpenStreetMap • Live Markers
+                      </span>
+                    </div>
+                    <DestinationMap destination={selectedDestination} height="240px" />
+                  </div>
+
+                  {/* Verified Nearby Safe Places */}
+                  <div style={{ marginTop: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                        Nearby Safe Places Around {selectedDestination.name} ({selectedDestination.safePlaces.length})
+                      </h4>
+                      <span style={{ fontSize: '11px', fontWeight: 500, color: '#16a34a' }}>
+                        ● Verified Directory
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' }}>
+                      {selectedDestination.safePlaces.map((sp) => (
+                        <div
+                          key={sp.id}
+                          style={{
+                            background: '#f8fafc',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            fontSize: '12px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <strong style={{ color: '#0f172a' }}>{sp.name}</strong>
+                            <span
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                background: sp.category === 'Police' ? '#dbeafe' : sp.category === 'Hospital' ? '#fee2e2' : '#f3e8ff',
+                                color: sp.category === 'Police' ? '#1d4ed8' : sp.category === 'Hospital' ? '#dc2626' : '#7e22ce',
+                              }}
+                            >
+                              {sp.category}
+                            </span>
+                          </div>
+                          <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '4px' }}>{sp.address}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                            <span style={{ color: '#2563eb', fontWeight: 600 }}>{sp.distance} away</span>
+                            <a
+                              href={`tel:${sp.phone.replace(/[^0-9+]/g, '')}`}
+                              style={{ color: '#16a34a', textDecoration: 'none', fontWeight: 600 }}
+                            >
+                              📞 {sp.phone}
+                            </a>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

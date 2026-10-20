@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, navigate } from '../src/router'
 import { getCurrentUser } from '../src/services/authService'
 import type { User } from '../src/services/authService'
+import { useDestination } from '../src/context/DestinationContext'
 import './SOS.css'
 
 type EmergencyType = 'medical' | 'harassment' | 'lost' | 'accident' | 'other'
@@ -53,11 +54,12 @@ const emergencyOptions: EmergencyOption[] = [
 ]
 
 export default function SOS() {
+  const { selectedDestination } = useDestination()
   const [user, setUser] = useState<User | null>(null)
   const [selectedType, setSelectedType] = useState<EmergencyType>('medical')
-  const [isFetchingLocation, setIsFetchingLocation] = useState(true)
-  const [locationText, setLocationText] = useState('Fetching location...')
-  const [coordinates, setCoordinates] = useState('-8.4095° S, 115.1889° E')
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState<'prompt' | 'granted' | 'denied' | 'unavailable'>('prompt')
+  const [gpsCoordinates, setGpsCoordinates] = useState<string | null>(null)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [activeAlert, setActiveAlert] = useState<{
     type: string
@@ -80,33 +82,32 @@ export default function SOS() {
 
   const userInitial = user?.fullName ? user.fullName.trim()[0].toUpperCase() : 'T'
 
-  // Simulate or retrieve location on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsFetchingLocation(false)
-      setLocationText('Seminyak, Bali, Indonesia')
-    }, 1200)
-
-    // Optional browser geolocation check
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setIsFetchingLocation(false)
-          setLocationText('Bali, Indonesia (Live GPS detected)')
-          setCoordinates(
-            `${pos.coords.latitude.toFixed(4)}°, ${pos.coords.longitude.toFixed(4)}° (±${Math.round(pos.coords.accuracy)}m)`
-          )
-        },
-        () => {
-          // If permission denied or unavailable, fallback to mock Bali location
-          setIsFetchingLocation(false)
-          setLocationText('Seminyak, Bali, Indonesia')
-        },
-        { timeout: 4000 }
-      )
+  // Request browser geolocation separately to clearly distinguish destination from live GPS
+  const requestGpsLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setGpsStatus('unavailable')
+      return
     }
 
-    return () => clearTimeout(timer)
+    setIsFetchingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsFetchingLocation(false)
+        setGpsStatus('granted')
+        setGpsCoordinates(
+          `${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E (±${Math.round(pos.coords.accuracy)}m)`
+        )
+      },
+      () => {
+        setIsFetchingLocation(false)
+        setGpsStatus('denied')
+      },
+      { timeout: 5000, enableHighAccuracy: true }
+    )
+  }
+
+  useEffect(() => {
+    requestGpsLocation()
   }, [])
 
   const handleSendSosClick = () => {
@@ -122,10 +123,10 @@ export default function SOS() {
     setActiveAlert({
       type: selectedOption?.label || 'Emergency',
       timestamp: `Today at ${timeFormatted}`,
-      responders: 'Bali Tourist Police & 3 Saved Contacts',
+      responders: `${selectedDestination.localPolice.name} (112) & Personal Emergency Contacts`,
     })
 
-    setToastMessage('Demonstration SOS alert triggered (Simulated Prototype).')
+    setToastMessage('Demonstration SOS alert triggered (Simulated Student Prototype).')
   }
 
   const handleCancelAlert = () => {
@@ -173,19 +174,22 @@ export default function SOS() {
               <div className="sos-confirm-card">
                 <div className="sos-confirm-row">
                   <span className="sos-row-label">Target Responders:</span>
-                  <span className="sos-row-value sos-bold">Bali Tourist Police & 3 Saved Contacts</span>
+                  <span className="sos-row-value sos-bold">{selectedDestination.localPolice.name} (112) & Saved Emergency Contacts</span>
                 </div>
                 <div className="sos-confirm-row">
-                  <span className="sos-row-label">Location:</span>
-                  <span className="sos-row-value">{locationText}</span>
+                  <span className="sos-row-label">Selected Destination:</span>
+                  <span className="sos-row-value">{selectedDestination.name}, {selectedDestination.state}</span>
                 </div>
                 <div className="sos-confirm-row">
-                  <span className="sos-row-label">Coordinates:</span>
-                  <span className="sos-row-value">{coordinates}</span>
+                  <span className="sos-row-label">Destination Coords:</span>
+                  <span className="sos-row-value">{selectedDestination.latitude.toFixed(4)}° N, {selectedDestination.longitude.toFixed(4)}° E</span>
+                </div>
+                <div className="sos-confirm-row">
+                  <span className="sos-row-label">Current GPS Status:</span>
+                  <span className="sos-row-value">{gpsCoordinates ? `Live: ${gpsCoordinates}` : gpsStatus === 'denied' ? 'GPS permission denied (planned destination used)' : 'Location pending / offline'}</span>
                 </div>
                 <div className="sos-confirm-notice">
-                  ⚠️ <strong>Prototype Notice:</strong> This is a simulation for evaluation and demonstration. Real emergency
-                  authorities are not contacted.
+                  ⚠️ <strong>Prototype Notice:</strong> This is a simulation for student evaluation and demonstration. Real emergency authorities are not contacted.
                 </div>
               </div>
             </div>
@@ -382,29 +386,62 @@ export default function SOS() {
               {/* Left Box: Your Location */}
               <div className="sos-location-card">
                 <div className="sos-location-header">
-                  <span className="sos-location-title">Your Location</span>
-                  {isFetchingLocation ? (
-                    <div className="sos-spinner" aria-label="Fetching location spinner" />
-                  ) : (
-                    <span className="sos-gps-fixed" title="Location detected">
-                      ● Live
-                    </span>
-                  )}
+                  <span className="sos-location-title">Selected Destination</span>
+                  <span className="sos-gps-fixed" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                    ● Planned
+                  </span>
                 </div>
 
                 <div className="sos-location-body">
-                  <p className="sos-location-text">{locationText}</p>
-                  {!isFetchingLocation && (
-                    <p className="sos-location-coords">{coordinates}</p>
-                  )}
+                  <p className="sos-location-text">{selectedDestination.name}, {selectedDestination.state}</p>
+                  <p className="sos-location-coords">
+                    📍 {selectedDestination.latitude.toFixed(4)}° N, {selectedDestination.longitude.toFixed(4)}° E
+                  </p>
                 </div>
 
-                {/* Target Responders (as specifically instructed) */}
-                <div className="sos-responders-badge">
+                {/* Separate Current GPS Location */}
+                <div style={{ marginTop: '12px', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>
+                      🛰️ Current Device GPS
+                    </span>
+                    <span style={{ fontSize: '11px', color: gpsCoordinates ? '#16a34a' : '#ea580c', fontWeight: 600 }}>
+                      {isFetchingLocation ? 'Acquiring...' : gpsCoordinates ? '● Live GPS' : 'GPS Inactive'}
+                    </span>
+                  </div>
+                  {gpsCoordinates ? (
+                    <p style={{ margin: 0, fontSize: '12px', color: '#0f172a', fontWeight: 500 }}>{gpsCoordinates}</p>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
+                      {gpsStatus === 'denied'
+                        ? 'Location permission denied. Planned destination coordinates are displayed above.'
+                        : 'GPS permission not granted or location unavailable. The displayed location is the planned destination.'}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={requestGpsLocation}
+                    style={{
+                      marginTop: '6px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#2563eb',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    🔄 Refresh GPS Location
+                  </button>
+                </div>
+
+                {/* Target Responders */}
+                <div className="sos-responders-badge" style={{ marginTop: '12px' }}>
                   <span className="sos-responders-icon">🛡️</span>
                   <div>
                     <div className="sos-responders-label">Target Responders:</div>
-                    <div className="sos-responders-val">Bali Tourist Police & 3 Saved Contacts</div>
+                    <div className="sos-responders-val">{selectedDestination.localPolice.name} (112) & Saved Contacts</div>
                   </div>
                 </div>
               </div>
