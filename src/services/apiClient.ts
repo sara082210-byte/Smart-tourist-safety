@@ -10,7 +10,8 @@ function normalizeBase(url: string | undefined): string {
   return cleaned
 }
 
-const API_BASE: string = normalizeBase(import.meta.env.VITE_API_BASE_URL as string | undefined)
+const DEFAULT_BASE = 'https://smart-tourist-safety-heqa.onrender.com'
+const API_BASE: string = normalizeBase(import.meta.env.VITE_API_BASE_URL as string | undefined) || DEFAULT_BASE
 
 export class ApiError extends Error {
   readonly status: number
