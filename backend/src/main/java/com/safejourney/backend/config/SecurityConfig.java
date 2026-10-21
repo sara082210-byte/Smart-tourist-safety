@@ -57,20 +57,16 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    SecurityContextRepository contextRepository) throws Exception {
-        HttpSessionCsrfTokenRepository csrfRepo = new HttpSessionCsrfTokenRepository();
-        csrfRepo.setHeaderName("X-XSRF-TOKEN");
-
         http
             .cors(c -> c.configurationSource(corsConfigurationSource()))
-            .csrf(c -> c.csrfTokenRepository(csrfRepo).ignoringRequestMatchers("/api/v1/**", "/api/auth/**"))
+            .csrf(csrf -> csrf.disable())
             .securityContext(c -> c.securityContextRepository(contextRepository))
             .sessionManagement(s -> s
                     .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                     .sessionFixation(f -> f.changeSessionId()))
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                    .requestMatchers("/api/auth/csrf", "/api/auth/register",
-                                     "/api/auth/login", "/api/auth/logout").permitAll()
+                    .requestMatchers("/api/auth/**").permitAll()
                     // Existing public endpoints keep working unchanged
                     .requestMatchers("/api/v1/**").permitAll()
                     .requestMatchers("/error").permitAll()
