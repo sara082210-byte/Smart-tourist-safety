@@ -62,7 +62,7 @@ public class SecurityConfig {
 
         http
             .cors(c -> c.configurationSource(corsConfigurationSource()))
-            .csrf(c -> c.csrfTokenRepository(csrfRepo).ignoringRequestMatchers("/api/v1/**"))
+            .csrf(c -> c.csrfTokenRepository(csrfRepo).ignoringRequestMatchers("/api/v1/**", "/api/auth/**"))
             .securityContext(c -> c.securityContextRepository(contextRepository))
             .sessionManagement(s -> s
                     .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
@@ -95,23 +95,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of(
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-            "http://[::1]:*",
-            "https://localhost:*",
-            "https://127.0.0.1:*",
-            "https://*.vercel.app",
-            "https://vercel.app"
-        ));
-        if (allowedOrigins != null && !allowedOrigins.isBlank()) {
-            for (String origin : allowedOrigins.split(",")) {
-                String trimmed = origin.trim();
-                if (!trimmed.isEmpty()) {
-                    config.addAllowedOriginPattern(trimmed);
-                }
-            }
-        }
+        // Allowed origin patterns with '*' dynamically matches any origin and reflects it back with credentials support
+        config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("X-XSRF-TOKEN", "Set-Cookie"));
