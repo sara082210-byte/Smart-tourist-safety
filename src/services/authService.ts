@@ -6,8 +6,8 @@
  * - No tokens or passwords are stored in localStorage/sessionStorage.
  */
 
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8080'
+const rawBase = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').trim()
+const API_BASE: string = rawBase.replace(/\/+$/, '')
 
 export type User = {
   id: number

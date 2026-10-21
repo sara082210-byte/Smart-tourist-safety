@@ -2,8 +2,8 @@
  * Shared authenticated API client with CSRF token handling.
  */
 
-const API_BASE: string =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8080'
+const rawBase = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').trim()
+const API_BASE: string = rawBase.replace(/\/+$/, '')
 
 export class ApiError extends Error {
   readonly status: number

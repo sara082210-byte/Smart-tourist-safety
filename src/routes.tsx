@@ -14,6 +14,7 @@ import SOS from '../pages/SOS'
 import About from '../pages/About'
 import HowItWorks from '../pages/HowItWorks'
 import Geofencing from '../pages/Geofencing'
+import EmergencyAssistant from '../pages/EmergencyAssistant'
 
 export const routes: Record<string, ComponentType> = {
   // --- Home / Login / Dashboard (owner: me) ---
@@ -30,6 +31,8 @@ export const routes: Record<string, ComponentType> = {
   '/journey-checkin': Journey,
   '/sos': SOS,
   '/emergency-sos': SOS,
+  '/assistant': EmergencyAssistant,
+  '/emergency-assistant': EmergencyAssistant,
 }
 
 

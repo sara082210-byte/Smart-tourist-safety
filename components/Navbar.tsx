@@ -7,6 +7,7 @@ type NavbarProps = { currentPath: string }
 const links = [
   { to: '/', label: 'Home' },
   { to: '/dashboard', label: 'Dashboard' },
+  { to: '/assistant', label: 'AI Assistant' },
   { to: '/about', label: 'About' },
   { to: '/how-it-works', label: 'How It Works' },
 ]
