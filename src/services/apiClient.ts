@@ -65,10 +65,16 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
   }
 }
 
-export async function getCsrfToken(): Promise<{ headerName: string; token: string }> {
-  const res = await apiRequest('/api/auth/csrf')
-  if (!res.ok) throw await parseError(res)
-  return (await res.json()) as { headerName: string; token: string }
+export async function getCsrfToken(): Promise<{ headerName: string; token: string } | null> {
+  try {
+    const res = await apiRequest('/api/auth/csrf')
+    if (res.ok) {
+      return (await res.json()) as { headerName: string; token: string }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 export async function getJson<T>(path: string): Promise<T> {
@@ -79,9 +85,13 @@ export async function getJson<T>(path: string): Promise<T> {
 
 export async function postJson<T>(path: string, body?: unknown): Promise<T> {
   const csrf = await getCsrfToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (csrf) {
+    headers[csrf.headerName] = csrf.token
+  }
   const res = await apiRequest(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!res.ok) throw await parseError(res)
@@ -91,9 +101,13 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 export async function putJson<T>(path: string, body?: unknown): Promise<T> {
   const csrf = await getCsrfToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (csrf) {
+    headers[csrf.headerName] = csrf.token
+  }
   const res = await apiRequest(path, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!res.ok) throw await parseError(res)

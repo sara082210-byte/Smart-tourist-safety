@@ -91,17 +91,27 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   }
 }
 
-async function getCsrfToken(): Promise<{ headerName: string; token: string }> {
-  const res = await request('/api/auth/csrf')
-  if (!res.ok) throw await parseError(res)
-  return (await res.json()) as { headerName: string; token: string }
+async function getCsrfToken(): Promise<{ headerName: string; token: string } | null> {
+  try {
+    const res = await request('/api/auth/csrf')
+    if (res.ok) {
+      return (await res.json()) as { headerName: string; token: string }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 async function postJson(path: string, body?: unknown): Promise<Response> {
   const csrf = await getCsrfToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (csrf) {
+    headers[csrf.headerName] = csrf.token
+  }
   const res = await request(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!res.ok) throw await parseError(res)

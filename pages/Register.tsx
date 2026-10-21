@@ -79,6 +79,8 @@ export default function Register() {
         const fe = err.fieldErrors
         setErrors({ fullName: fe.fullName, email: fe.email, phone: fe.phone, password: fe.password })
         setNotice(err.message)
+      } else if (err instanceof Error) {
+        setNotice(err.message)
       } else {
         setNotice('Something went wrong. Please try again.')
       }

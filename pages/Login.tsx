@@ -69,6 +69,8 @@ export default function Login() {
       if (err instanceof AuthError) {
         setErrors({ identifier: err.fieldErrors.identifier, password: err.fieldErrors.password })
         setNotice(err.message)
+      } else if (err instanceof Error) {
+        setNotice(err.message)
       } else {
         setNotice('Something went wrong. Please try again.')
       }
