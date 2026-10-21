@@ -13,7 +13,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/destinations")
-@CrossOrigin(origins = "*")
 public class DestinationController {
 
     private final DestinationRepository destinationRepository;

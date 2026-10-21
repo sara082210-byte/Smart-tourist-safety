@@ -26,14 +26,27 @@ export async function sendAgentChatMessage(request: AgentChatRequest): Promise<A
   })
 
   if (!res.ok) {
-    let message = 'Unable to get response from AI Safety Assistant.'
+    let message = `Unable to get response from AI Safety Assistant (${res.status}).`
     try {
-      const errBody = (await res.json()) as { message?: string }
-      if (errBody?.message) {
-        message = errBody.message
+      const text = await res.text()
+      try {
+        const errBody = JSON.parse(text) as { message?: string; error?: string; path?: string }
+        if (errBody?.message) {
+          message = errBody.message
+        } else if (errBody?.error && errBody?.path) {
+          message = `${errBody.error} (${errBody.path})`
+        } else if (errBody?.error) {
+          message = errBody.error
+        }
+      } catch {
+        if (res.status === 404) {
+          message = 'AI Safety Assistant endpoint not found (404). Please verify backend deployment.'
+        } else if (res.status === 502 || res.status === 503) {
+          message = 'Backend server is starting up on Render (cold start). Please retry in 30 seconds.'
+        }
       }
     } catch {
-      // non-JSON response
+      // non-readable
     }
     throw new ApiError(message, res.status)
   }

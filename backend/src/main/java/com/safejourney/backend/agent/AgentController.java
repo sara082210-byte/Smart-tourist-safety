@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/agent")
-@CrossOrigin(origins = "*")
 public class AgentController {
 
     private static final Logger log = LoggerFactory.getLogger(AgentController.class);

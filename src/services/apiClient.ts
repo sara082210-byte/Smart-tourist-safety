@@ -2,8 +2,15 @@
  * Shared authenticated API client with CSRF token handling.
  */
 
-const rawBase = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').trim()
-const API_BASE: string = rawBase.replace(/\/+$/, '')
+function normalizeBase(url: string | undefined): string {
+  if (!url) return ''
+  let cleaned = url.trim().replace(/\/+$/, '')
+  // Prevent duplicate /api prefixes if user entered https://backend.onrender.com/api in Vercel
+  cleaned = cleaned.replace(/\/api\/v1$/, '').replace(/\/api$/, '')
+  return cleaned
+}
+
+const API_BASE: string = normalizeBase(import.meta.env.VITE_API_BASE_URL as string | undefined)
 
 export class ApiError extends Error {
   readonly status: number
@@ -20,14 +27,32 @@ export class ApiError extends Error {
 const NETWORK_ERROR = 'Cannot reach the server. Please check your connection and try again.'
 
 async function parseError(res: Response): Promise<ApiError> {
-  let message = 'Something went wrong. Please try again.'
+  let message = `Server error (${res.status}). Please try again.`
   let fieldErrors: Record<string, string> = {}
   try {
-    const body = (await res.json()) as { message?: string; fieldErrors?: Record<string, string> | null }
-    if (body.message) message = body.message
-    if (body.fieldErrors) fieldErrors = body.fieldErrors
+    const text = await res.text()
+    try {
+      const body = JSON.parse(text) as {
+        message?: string
+        error?: string
+        path?: string
+        fieldErrors?: Record<string, string> | null
+      }
+      if (body.message) message = body.message
+      else if (body.error && body.path) message = `${body.error} (${body.path})`
+      else if (body.error) message = body.error
+      if (body.fieldErrors) fieldErrors = body.fieldErrors
+    } catch {
+      if (res.status === 404) {
+        message = 'Server endpoint not found (404). Please verify your backend URL.'
+      } else if (res.status === 502 || res.status === 503) {
+        message = 'Backend server is starting up on Render (cold start). Please retry in 30 seconds.'
+      } else if (res.status === 403) {
+        message = 'Session expired or request rejected (403). Please refresh the page and try again.'
+      }
+    }
   } catch {
-    /* non-JSON body */
+    /* non-readable */
   }
   return new ApiError(message, res.status, fieldErrors)
 }

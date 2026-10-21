@@ -6,8 +6,14 @@
  * - No tokens or passwords are stored in localStorage/sessionStorage.
  */
 
-const rawBase = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').trim()
-const API_BASE: string = rawBase.replace(/\/+$/, '')
+function normalizeBase(url: string | undefined): string {
+  if (!url) return ''
+  let cleaned = url.trim().replace(/\/+$/, '')
+  cleaned = cleaned.replace(/\/api\/v1$/, '').replace(/\/api$/, '')
+  return cleaned
+}
+
+const API_BASE: string = normalizeBase(import.meta.env.VITE_API_BASE_URL as string | undefined)
 
 export type User = {
   id: number
@@ -45,14 +51,34 @@ export class AuthError extends Error {
 const NETWORK_ERROR = 'Cannot reach the server. Please check your connection and try again.'
 
 async function parseError(res: Response): Promise<AuthError> {
-  let message = 'Something went wrong. Please try again.'
+  let message = `Server error (${res.status}). Please try again.`
   let fieldErrors: Record<string, string> = {}
   try {
-    const body = (await res.json()) as { message?: string; fieldErrors?: Record<string, string> | null }
-    if (body.message) message = body.message
-    if (body.fieldErrors) fieldErrors = body.fieldErrors
+    const text = await res.text()
+    try {
+      const body = JSON.parse(text) as {
+        message?: string
+        error?: string
+        path?: string
+        fieldErrors?: Record<string, string> | null
+      }
+      if (body.message) message = body.message
+      else if (body.error && body.path) message = `${body.error} (${body.path})`
+      else if (body.error) message = body.error
+      if (body.fieldErrors) fieldErrors = body.fieldErrors
+    } catch {
+      if (res.status === 404) {
+        message = 'Authentication endpoint not found (404). Please verify your backend URL.'
+      } else if (res.status === 502 || res.status === 503) {
+        message = 'Backend server is starting up on Render (cold start). Please retry in 30 seconds.'
+      } else if (res.status === 403) {
+        message = 'Session expired or request rejected (403). Please refresh and try again.'
+      } else if (res.status === 401) {
+        message = 'Invalid email/phone or password. If you haven\'t registered on this deployment yet, please create an account.'
+      }
+    }
   } catch {
-    /* non-JSON body: keep the generic message */
+    /* non-readable */
   }
   return new AuthError(message, res.status, fieldErrors)
 }
