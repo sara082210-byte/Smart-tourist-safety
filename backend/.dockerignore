@@ -1,0 +1,8 @@
+target/
+.git/
+.gitignore
+*.log
+backend-error.txt
+.idea/
+*.iml
+.vscode/

@@ -100,7 +100,9 @@ public class SecurityConfig {
             "http://127.0.0.1:*",
             "http://[::1]:*",
             "https://localhost:*",
-            "https://127.0.0.1:*"
+            "https://127.0.0.1:*",
+            "https://*.vercel.app",
+            "https://vercel.app"
         ));
         if (allowedOrigins != null && !allowedOrigins.isBlank()) {
             for (String origin : allowedOrigins.split(",")) {
