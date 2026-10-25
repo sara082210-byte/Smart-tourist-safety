@@ -53,6 +53,9 @@ public class AuthController {
     /** Returns the CSRF token for the current session; send it as X-XSRF-TOKEN on POSTs. */
     @GetMapping("/csrf")
     public Map<String, String> csrf(CsrfToken token) {
+        if (token == null) {
+            return Map.of("headerName", "X-XSRF-TOKEN", "token", "");
+        }
         return Map.of("headerName", token.getHeaderName(), "token", token.getToken());
     }
 

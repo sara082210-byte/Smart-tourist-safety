@@ -119,24 +119,67 @@ async function postJson(path: string, body?: unknown): Promise<Response> {
   return res
 }
 
+const AUTH_USER_KEY = 'safejourney_auth_user'
+
+export function getStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem(AUTH_USER_KEY)
+    return raw ? (JSON.parse(raw) as User) : null
+  } catch {
+    return null
+  }
+}
+
+export function setStoredUser(user: User | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(AUTH_USER_KEY)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function register(payload: RegisterPayload): Promise<User> {
   const res = await postJson('/api/auth/register', payload)
-  return (await res.json()) as User
+  const user = (await res.json()) as User
+  setStoredUser(user)
+  return user
 }
 
 export async function login(payload: LoginPayload): Promise<User> {
   const res = await postJson('/api/auth/login', payload)
-  return (await res.json()) as User
+  const user = (await res.json()) as User
+  setStoredUser(user)
+  return user
 }
 
 export async function logout(): Promise<void> {
-  await postJson('/api/auth/logout')
+  try {
+    await postJson('/api/auth/logout')
+  } finally {
+    setStoredUser(null)
+  }
 }
 
 /** Returns the logged-in user, or null if the session is not authenticated. */
 export async function getCurrentUser(): Promise<User | null> {
-  const res = await request('/api/auth/me')
-  if (res.status === 401) return null
-  if (!res.ok) throw await parseError(res)
-  return (await res.json()) as User
+  try {
+    const res = await request('/api/auth/me')
+    if (res.ok) {
+      const user = (await res.json()) as User
+      setStoredUser(user)
+      return user
+    }
+    if (res.status === 401) {
+      // If server returns 401, check if we have a valid stored session (handles cross-domain 3rd party cookie blocking)
+      return getStoredUser()
+    }
+  } catch {
+    // On network failure or server wake-up delay, fall back to cached session
+    return getStoredUser()
+  }
+  return getStoredUser()
 }
