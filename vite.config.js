@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     process.env.VITE_API_BASE_URL ||
     process.env._API_BASE_URL ||
     process.env.API_BASE_URL ||
-    'https://smart-tourist-safety-heqa.onrender.com'
+    ''
 
   return {
     plugins: [react()],

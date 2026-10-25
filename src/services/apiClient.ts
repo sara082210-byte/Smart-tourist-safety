@@ -11,7 +11,14 @@ function normalizeBase(url: string | undefined): string {
 }
 
 const DEFAULT_BASE = 'https://smart-tourist-safety-heqa.onrender.com'
-const API_BASE: string = normalizeBase(import.meta.env.VITE_API_BASE_URL as string | undefined) || DEFAULT_BASE
+export function getApiBase(): string {
+  const envUrl = normalizeBase(import.meta.env.VITE_API_BASE_URL as string | undefined)
+  if (envUrl) return envUrl
+  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+    return ''
+  }
+  return DEFAULT_BASE
+}
 
 export class ApiError extends Error {
   readonly status: number
@@ -60,7 +67,7 @@ async function parseError(res: Response): Promise<ApiError> {
 
 export async function apiRequest(path: string, init: RequestInit = {}): Promise<Response> {
   try {
-    return await fetch(`${API_BASE}${path}`, { ...init, credentials: 'include' })
+    return await fetch(`${getApiBase()}${path}`, { ...init, credentials: 'include' })
   } catch {
     throw new ApiError(NETWORK_ERROR, 0)
   }

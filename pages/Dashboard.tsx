@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, navigate } from '../src/router'
-import { getCurrentUser, logout } from '../src/services/authService'
+import { getCurrentUser, logout, getStoredUser } from '../src/services/authService'
 import type { User } from '../src/services/authService'
 import { useDestination } from '../src/context/DestinationContext'
 import {
@@ -46,8 +46,8 @@ export default function Dashboard() {
     doCheckIn,
   } = useDestination()
 
-  const [user, setUser] = useState<User | null>(null)
-  const [userLoading, setUserLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(() => getStoredUser())
+  const [userLoading, setUserLoading] = useState(() => !getStoredUser())
 
   // Auth guard: only authenticated sessions may view the dashboard
   useEffect(() => {
@@ -55,15 +55,21 @@ export default function Dashboard() {
     getCurrentUser()
       .then((currentUser) => {
         if (cancelled) return
-        if (!currentUser) {
+        if (!currentUser && !getStoredUser()) {
           navigate('/login')
           return
         }
-        setUser(currentUser)
+        if (currentUser) {
+          setUser(currentUser)
+        }
         setUserLoading(false)
       })
       .catch(() => {
-        if (!cancelled) navigate('/login')
+        if (!cancelled && !getStoredUser()) {
+          navigate('/login')
+        } else {
+          setUserLoading(false)
+        }
       })
     return () => {
       cancelled = true
